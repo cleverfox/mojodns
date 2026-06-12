@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}zone text · {{ zone_display }} · mojodns{% endblock %}
+{% block content %}
+
+<div class="crumbs"><a href="/zones">zones</a> <span>/</span>
+  <a href="/zones/{{ zone|bare }}">{{ zone_display }}</a> <span>/</span> <strong>zone text</strong></div>
+
+<section class="panel">
+  <div class="panel-head">
+    <h1 class="mono">{{ zone_display }} <span class="count">{{ count }} records</span></h1>
+    <div class="row-actions">
+      <a class="btn btn-ghost" href="/zones/{{ zone|bare }}/axfr?raw=1" title="download as zone file">download ⤓</a>
+      <a class="btn btn-ghost" href="/zones/{{ zone|bare }}/axfr">refresh ⟳</a>
+    </div>
+  </div>
+  <p class="hint">Transferred live via AXFR — this is exactly what a secondary
+    nameserver receives for this zone.</p>
+  <pre class="code zone-dump">{{ text }}</pre>
+</section>
+
+{% endblock %}

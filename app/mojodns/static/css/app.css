@@ -269,6 +269,8 @@ pre.code {
   overflow-x: auto; white-space: pre; color: var(--text);
 }
 
+pre.zone-dump { max-height: 70vh; overflow: auto; font-size: 12px; }
+
 .kv-doc th { width: 28%; white-space: nowrap; vertical-align: top; }
 .kv-doc td { padding: 6px 0; color: var(--dim); }
 .kv-doc td code { font-family: var(--mono); color: var(--amber); font-size: 12px; }

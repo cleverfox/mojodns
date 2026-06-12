@@ -121,6 +121,12 @@ Trigger it with **verify zones ✓** on the dashboard (status dot per zone)
 or **verify NS ✓** on a zone page (each NS record marked ✓/✗). A background
 re-check runs every `VERIFY_INTERVAL_HOURS` (default 24, 0 disables).
 
+**view zone ≡** on a zone page performs a live TSIG-signed AXFR against
+pdns (`PDNS_AXFR_HOST:PDNS_AXFR_PORT`) and shows the zone-file text exactly
+as a secondary receives it, with a download option — doubling as a
+transfer-path health check: if this fails, the slaves can't transfer
+either.
+
 ## ACME / Let's Encrypt (acme.sh)
 
 The panel exposes a PowerDNS-API-compatible endpoint, so acme.sh's stock

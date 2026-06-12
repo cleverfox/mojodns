@@ -15,6 +15,13 @@ class Settings(BaseSettings):
     # TSIG key *name* for outgoing zone transfers (TSIG-ALLOW-AXFR metadata
     # is set on every zone when non-empty); the key itself lives in pdns
     tsig_key: str = ""
+    # secret + algorithm let the panel itself AXFR zones (zone text view)
+    tsig_secret: str = ""
+    tsig_algo: str = "hmac-sha256"
+
+    # where the panel sends its own AXFR requests (the pdns DNS listener)
+    pdns_axfr_host: str = "pdns"
+    pdns_axfr_port: int = 1053
     default_soa_ns: str = "ns1.example.net."
     default_soa_mail: str = "hostmaster.example.net."
     default_nameservers: str = "ns1.example.net.,ns2.example.net."

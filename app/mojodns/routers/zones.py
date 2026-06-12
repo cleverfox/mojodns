@@ -2,7 +2,7 @@ import re
 from collections import defaultdict
 
 from fastapi import APIRouter, Depends, Form, Request
-from fastapi.responses import RedirectResponse
+from fastapi.responses import PlainTextResponse, RedirectResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -12,6 +12,7 @@ from ..deps import current_user, require_admin, user_zones, zone_guard
 from ..dnsutil import Soa, build_content, dotted, email_to_rname, flatten_rrsets, split_prio
 from ..idn import to_ascii, to_unicode
 from ..pdns import PdnsError, canonical, pdns
+from ..axfr import AxfrError, axfr_text
 from ..templating import flash, render
 from ..verify import check_zone, check_zones, load_checks, store_results, summarize
 
@@ -382,6 +383,21 @@ def zone_notify(request: Request, zone: str = Depends(zone_guard),
     except PdnsError as e:
         flash(request, str(e), "error")
     return RedirectResponse(f"/zones/{zone.rstrip('.')}", status_code=303)
+
+
+@router.get("/zones/{zone}/axfr")
+def zone_axfr(request: Request, raw: int = 0, zone: str = Depends(zone_guard),
+              user: User = Depends(current_user)):
+    try:
+        text, count = axfr_text(zone)
+    except AxfrError as e:
+        flash(request, f"Zone transfer failed: {e}", "error")
+        return RedirectResponse(f"/zones/{zone.rstrip('.')}", status_code=303)
+    if raw:
+        return PlainTextResponse(text, headers={
+            "Content-Disposition": f'attachment; filename="{zone.rstrip(".")}.zone"'})
+    return render(request, "zone_axfr.html", user=user, zone=zone,
+                  zone_display=to_unicode(zone.rstrip(".")), text=text, count=count)
 
 
 @router.get("/zones/{zone}/history")
