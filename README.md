@@ -46,6 +46,23 @@ docker compose logs -f web
 Open http://localhost:8000 — first run creates an `admin` user with the
 password from `BOOTSTRAP_ADMIN_PASSWORD` (printed in the log if unset).
 
+## Version requirements
+
+| Component | Minimum | Why | Used here |
+|---|---|---|---|
+| NSD (secondaries) | **4.9.0** (2024-04-03) | catalog zone *consumer* support (RFC 9432: `catalog: consumer`, `catalog-member-pattern`) | 4.11.1 (test slave) |
+| PowerDNS Auth | **4.7** | catalog zone *producer* support + `catalog` column in the gpgsql schema | 4.9.4 |
+| PostgreSQL | 12+ | nothing special | 16 |
+
+Check a secondary with `nsd -v`. Distro packages, for orientation
+(repology, 2026-06): Debian 12 ships 4.6.1 and Ubuntu 24.04 ships 4.8.0 —
+**both too old**; Debian 13 (4.12), Ubuntu 25.04 (4.11), FreeBSD ports
+(4.14), Alpine 3.24 (4.14) and EPEL 9 (4.14) are all fine. For hosts stuck
+on an older NSD, either install upstream NSD from source/backports, or keep
+that slave on a static zone list (the old generator-script approach) until
+it can be upgraded — catalog membership is just a hint, serving zones from
+a manually maintained `zone:` list still works.
+
 ## Configuring the NSD secondaries
 
 On each public NSD (≥ 4.9) host, see `nsd-slave/nsd.conf.example`:

@@ -1,8 +1,11 @@
 # Public NSD secondaries
 
-Each public nameserver runs NSD ≥ 4.9 and configures itself from the
-**catalog zone** produced by the hidden PowerDNS master — this replaces the
-old `nsd_config_generator.sh` cron hack (drill PTR → rewrite nsd.conf).
+Each public nameserver runs **NSD ≥ 4.9.0** (released 2024-04-03 — the
+first version with catalog-zone consumer support; check with `nsd -v`) and
+configures itself from the **catalog zone** produced by the hidden PowerDNS
+master — this replaces the old `nsd_config_generator.sh` cron hack
+(drill PTR → rewrite nsd.conf). Beware distro packages: Debian 12 (4.6.1)
+and Ubuntu 24.04 (4.8.0) are too old.
 
 How it works:
 
