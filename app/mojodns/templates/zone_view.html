@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block title %}{{ zone_display }} · mojodns{% endblock %}
+{% block content %}
+
+<div class="crumbs"><a href="/zones">zones</a> <span>/</span> <strong>{{ zone_display }}</strong></div>
+
+<section class="panel">
+  <div class="panel-head">
+    <h1 class="mono">{{ zone_display }}</h1>
+    <div class="chips">
+      <span class="chip">serial <b id="zone-serial">{{ zdata.serial }}</b></span>
+      <span class="chip">owner <b>{{ owner }}</b></span>
+      {% set st = check.status if check else 'unknown' %}
+      <span class="chip" title="{% if check %}resolved NS: {{ check.resolved_ns or check.detail or '—' }} · checked {{ check.checked_at.strftime('%d.%m.%Y %H:%M') }}{% else %}not verified yet{% endif %}">
+        ns <b><span class="status-dot st-{{ st }}"></span> {{ st }}</b>
+      </span>
+    </div>
+    <div class="row-actions">
+      <form method="post" action="/zones/{{ zone|bare }}/verify" class="inline"
+            onsubmit="this.querySelector('button').disabled=true">
+        <button class="btn btn-ghost" type="submit" title="compare zone NS with live delegation">verify NS ✓</button>
+      </form>
+      <form method="post" action="/zones/{{ zone|bare }}/notify" class="inline">
+        <button class="btn btn-ghost" type="submit" title="re-send DNS NOTIFY">renotify ⚡</button>
+      </form>
+      <a class="btn btn-ghost" href="/zones/{{ zone|bare }}/edit">settings</a>
+      <a class="btn btn-ghost" href="/zones/{{ zone|bare }}/access">access</a>
+      <a class="btn btn-ghost" href="/zones/{{ zone|bare }}/history">history</a>
+    </div>
+  </div>
+
+  {% if soa %}
+  <table class="kv">
+    <tr><th>primary ns</th><td class="mono">{{ soa.mname }}</td>
+        <th>hostmaster</th><td class="mono">{{ soa.email }}</td></tr>
+    <tr><th>refresh / retry</th><td class="mono">{{ soa.refresh }} / {{ soa.retry }}</td>
+        <th>expire / minimum</th><td class="mono">{{ soa.expire }} / {{ soa.minimum }}</td></tr>
+  </table>
+  {% endif %}
+</section>
+
+<section class="panel">
+  <div class="panel-head">
+    <h1>records <span class="count">{{ records|length }}</span></h1>
+    <input class="search" type="search" placeholder="filter records…" data-filter="#records-table">
+  </div>
+
+  <form class="record-add grid-form"
+        hx-post="/zones/{{ zone|bare }}/records"
+        hx-target="#records-wrap" hx-swap="innerHTML"
+        hx-on::after-request="if(event.detail.successful) this.reset()">
+    <label>host <input name="host" value="@" required></label>
+    <label>type
+      <select name="type" data-prio-toggle="#add-prio">
+        {% for t in record_types %}<option>{{ t }}</option>{% endfor %}
+      </select>
+    </label>
+    <label id="add-prio" style="display:none">prio <input name="prio" type="number" value="10"></label>
+    <label class="grow">data <input name="data" placeholder="content" required></label>
+    <label>ttl <input name="ttl" type="number" value="3600"></label>
+    <button class="btn btn-primary" type="submit">+ add</button>
+  </form>
+
+  <div id="records-wrap">
+    {% include "partials/records_table.html" %}
+  </div>
+</section>
+
+{% endblock %}

@@ -1,0 +1,26 @@
+# mojodns-ddns client configuration
+# install as /usr/local/etc/mojodns-ddns.conf (or pass the path as $1)
+
+PANEL_URL="https://dns-panel.example.net"
+TOKEN="put-api-token-here"
+RECORD="home.example.com"
+TTL=300
+
+# which families to manage
+UPDATE_A=true
+UPDATE_AAAA=true
+
+# when a family has no connectivity:
+#   true  = delete the (stale) record from DNS
+#   false = leave the record as it is
+DEL_STALE_A=false
+DEL_STALE_AAAA=true
+
+# where to learn the public address; "auto" skips discovery and lets the
+# panel use the source address of the update request itself (the panel must
+# then be reachable over that IP family)
+IP4_URL="https://ifconfig.me"
+IP6_URL="https://ifconfig.me"
+
+CURL_TIMEOUT=10
+QUIET=false

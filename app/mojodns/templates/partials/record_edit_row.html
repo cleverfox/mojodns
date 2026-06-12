@@ -1,0 +1,22 @@
+<tr class="editing">
+  <td colspan="6">
+    <form class="record-add grid-form"
+          hx-post="/zones/{{ zone|bare }}/records/update"
+          hx-target="#records-wrap" hx-swap="innerHTML">
+      <input type="hidden" name="orig_name" value="{{ rec.name }}">
+      <input type="hidden" name="orig_type" value="{{ rec.type }}">
+      <input type="hidden" name="orig_content" value="{{ rec.content }}">
+      <label>host <input name="host" value="{{ rec.rel }}" required></label>
+      <label>type <input value="{{ rec.type }}" disabled></label>
+      {% if rec.type in ('MX', 'SRV') %}
+      <label>prio <input name="prio" type="number" value="{{ rec.prio or 0 }}"></label>
+      {% endif %}
+      <label class="grow">data <input name="data" value="{{ rec.data }}" required></label>
+      <label>ttl <input name="ttl" type="number" value="{{ rec.ttl or 3600 }}"></label>
+      <button class="btn btn-primary" type="submit">save</button>
+      <button class="btn btn-ghost" type="button"
+              hx-get="/zones/{{ zone|bare }}/records/row?name={{ rec.name|urlencode }}&rtype={{ rec.type|urlencode }}&content={{ rec.content|urlencode }}"
+              hx-target="closest tr" hx-swap="outerHTML">cancel</button>
+    </form>
+  </td>
+</tr>

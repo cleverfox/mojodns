@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}users · mojodns{% endblock %}
+{% block content %}
+
+<section class="panel">
+  <div class="panel-head">
+    <h1>users <span class="count">{{ users|length }}</span></h1>
+    <input class="search" type="search" placeholder="filter users…" data-filter="#users-table">
+    <details class="reveal">
+      <summary class="btn btn-primary">+ new user</summary>
+      <form method="post" action="/users" class="grid-form">
+        <label>login <input name="login" required></label>
+        <label>e-mail <input name="email" type="email"></label>
+        <label>password <input name="password" type="password" required></label>
+        <label>role
+          <select name="role">
+            <option value="owner">owner</option>
+            <option value="admin">admin</option>
+          </select>
+        </label>
+        <button class="btn btn-primary span2" type="submit">create user ▸</button>
+      </form>
+    </details>
+  </div>
+
+  <table class="data" id="users-table">
+    <thead><tr><th>login</th><th>e-mail</th><th>role</th><th>zones</th><th>since</th><th class="t-right">actions</th></tr></thead>
+    <tbody>
+      {% for u in users %}
+      <tr>
+        <td><a class="zone-link" href="/users/{{ u.id }}">{{ u.login }}</a></td>
+        <td class="dim">{{ u.email or '—' }}</td>
+        <td><span class="badge badge-{{ u.role }}">{{ u.role }}</span></td>
+        <td class="mono dim">{{ zone_counts.get(u.id, 0) }}</td>
+        <td class="dim">{{ u.created_at.strftime('%d.%m.%Y') }}</td>
+        <td class="t-right row-actions">
+          <a class="btn btn-ghost" href="/users/{{ u.id }}">edit</a>
+          <a class="btn btn-ghost" href="/users/{{ u.id }}/history">history</a>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+
+{% endblock %}

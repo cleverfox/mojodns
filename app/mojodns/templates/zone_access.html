@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}access · {{ zone_display }} · mojodns{% endblock %}
+{% block content %}
+
+<div class="crumbs"><a href="/zones">zones</a> <span>/</span>
+  <a href="/zones/{{ zone|bare }}">{{ zone_display }}</a> <span>/</span> <strong>access</strong></div>
+
+<section class="panel">
+  <div class="panel-head"><h1>who can edit {{ zone_display }}</h1></div>
+  <table class="data">
+    <thead><tr><th>user</th><th>status</th><th class="t-right">toggle</th></tr></thead>
+    <tbody>
+      {% for row in others %}
+      <tr>
+        <td class="mono">{{ row.user.login }}{% if row.me %} <span class="dim">(you)</span>{% endif %}</td>
+        <td>
+          {% if row.grant and row.grant.is_owner %}<span class="badge badge-admin">owner</span>
+          {% elif row.grant %}<span class="badge badge-ok">editor</span>
+          {% else %}<span class="dim">no access</span>{% endif %}
+        </td>
+        <td class="t-right row-actions">
+          {% if user.is_admin and not (row.grant and row.grant.is_owner) %}
+          <form method="post" action="/zones/{{ zone|bare }}/owner/{{ row.user.id }}" class="inline"
+                onsubmit="return confirm('Make {{ row.user.login }} the owner of {{ zone_display }}?')">
+            <button class="btn btn-ghost" type="submit" title="transfer zone ownership">make owner ★</button>
+          </form>
+          {% endif %}
+          {% if not (row.grant and row.grant.is_owner) and not row.me %}
+          <form method="post" action="/zones/{{ zone|bare }}/access/{{ row.user.id }}/toggle" class="inline">
+            <button class="btn btn-ghost" type="submit">
+              {{ 'revoke ×' if row.grant else 'grant ▸' }}
+            </button>
+          </form>
+          {% elif row.grant and row.grant.is_owner %}<span class="dim">—</span>{% endif %}
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="3" class="empty">no other users</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+
+{% endblock %}

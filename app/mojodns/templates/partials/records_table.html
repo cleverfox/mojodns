@@ -1,0 +1,12 @@
+<table class="data" id="records-table">
+  <thead>
+    <tr><th>host</th><th>type</th><th>prio</th><th>data</th><th>ttl</th><th class="t-right">actions</th></tr>
+  </thead>
+  <tbody>
+    {% for rec in records %}
+    {% include "partials/record_row.html" %}
+    {% else %}
+    <tr><td colspan="6" class="empty">no records besides SOA</td></tr>
+    {% endfor %}
+  </tbody>
+</table>

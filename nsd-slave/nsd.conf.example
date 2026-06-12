@@ -1,0 +1,37 @@
+# Public NSD secondary for mojodns — catalog-zone autoconfiguration
+# Requires NSD >= 4.9 (catalog zone consumer support, RFC 9432).
+#
+# Replace 192.0.2.1 with the hidden master's IP and catalog.mojodns with
+# your CATALOG_ZONE (no trailing dot in NSD zone names).
+
+server:
+    ip-address: 0.0.0.0
+    ip-address: ::0
+    hide-version: yes
+    zonesdir: "/var/db/nsd"
+
+remote-control:
+    control-enable: yes
+    control-interface: /var/run/nsd.sock
+
+# pattern applied to every zone the catalog adds
+pattern:
+    name: "catalog-members"
+    allow-notify: 192.0.2.1 NOKEY
+    request-xfr: AXFR 192.0.2.1 NOKEY
+
+# the catalog zone itself: a normal secondary zone marked as consumer
+zone:
+    name: "catalog.mojodns"
+    allow-notify: 192.0.2.1 NOKEY
+    request-xfr: AXFR 192.0.2.1 NOKEY
+    catalog: consumer
+    catalog-member-pattern: "catalog-members"
+
+# --- with TSIG (see README.md): replace NOKEY with the key name everywhere,
+# INCLUDING allow-notify (pdns signs NOTIFY once the key is active):
+#
+# key:
+#     name: "mojodns-xfr"
+#     algorithm: hmac-sha256
+#     secret: "<base64>"

@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}mojodns{% endblock %}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/css/app.css">
+  <script src="/static/js/htmx.min.js" defer></script>
+</head>
+<body>
+<div class="scanlines" aria-hidden="true"></div>
+
+{% if user is defined and user %}
+<header class="topbar">
+  <a class="wordmark" href="/zones">
+    <span class="wordmark-block">MOJO</span><span class="wordmark-rest">DNS</span>
+  </a>
+  <nav class="topbar-nav">
+    <a href="/zones">zones</a>
+    {% if user.is_admin %}<a href="/users">users</a>{% endif %}
+    <a href="/howto">how to use</a>
+    <span class="topbar-user">
+      <span class="dot dot-ok"></span>{{ user.login }}{% if user.is_admin %} <em>· admin</em>{% endif %}
+    </span>
+    <a class="btn btn-ghost" href="/logout">log out</a>
+  </nav>
+</header>
+{% endif %}
+
+<main class="page">
+  {% if flashes %}
+  <div class="flashes">
+    {% for f in flashes %}
+    <div class="flash flash-{{ f.level }}">{{ f.message }}</div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {% block content %}{% endblock %}
+</main>
+
+<footer class="foot">mojodns</footer>
+
+<script>
+  // live filter for tables: <input data-filter="#table-id">
+  document.addEventListener('input', function (e) {
+    var sel = e.target.getAttribute && e.target.getAttribute('data-filter');
+    if (!sel) return;
+    var q = e.target.value.toLowerCase();
+    document.querySelectorAll(sel + ' tbody tr').forEach(function (tr) {
+      tr.style.display = tr.textContent.toLowerCase().indexOf(q) >= 0 ? '' : 'none';
+    });
+  });
+  // show prio input only for MX/SRV: <select data-prio-toggle="#wrap-id">
+  document.addEventListener('change', function (e) {
+    var sel = e.target.getAttribute && e.target.getAttribute('data-prio-toggle');
+    if (!sel) return;
+    var prio = document.querySelector(sel);
+    if (prio) prio.style.display = (e.target.value === 'MX' || e.target.value === 'SRV') ? '' : 'none';
+  });
+</script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

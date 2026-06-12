@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% block title %}how to use · mojodns{% endblock %}
+{% block content %}
+
+<section class="panel">
+  <div class="panel-head"><h1>API tokens</h1></div>
+  <p class="prose">Most automation around mojodns — listing your zones, issuing TLS
+    certificates, dynamic DNS — is authenticated with an <b>API token</b>. A token acts
+    on your behalf: it can only reach zones you own or edit. Pass it either as the
+    <code>X-API-Key</code> HTTP header or as a <code>?token=…</code> query parameter.</p>
+
+  {% if tokens %}
+  <table class="data">
+    <thead><tr><th>your token</th><th>note</th><th>created</th></tr></thead>
+    <tbody>
+      {% for t in tokens %}
+      <tr>
+        <td class="mono">{{ t.token }}</td>
+        <td class="dim">{{ t.note or '—' }}</td>
+        <td class="dim">{{ t.created_at.strftime('%d.%m.%Y') }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="prose dim">You have no tokens yet — ask an administrator to create one for you.</p>
+  {% endif %}
+
+  <h2 class="subhead">list zones available to your token</h2>
+  <pre class="code">curl -H "X-API-Key: &lt;token&gt;" {{ base }}/api/v1/zones</pre>
+</section>
+
+<section class="panel">
+  <div class="panel-head"><h1>TLS certificates (acme.sh / Let's Encrypt)</h1></div>
+  <p class="prose">The panel is compatible with the stock
+    <a class="zone-link" href="https://github.com/acmesh-official/acme.sh/wiki/dnsapi#dns_pdns" target="_blank" rel="noopener">dns_pdns</a>
+    module of acme.sh, so DNS-01 validation (including wildcard certificates) works
+    without any custom plugins. Your token may only create and remove <b>TXT</b>
+    records, in your zones only.</p>
+  <pre class="code">export PDNS_Url="{{ base }}"
+export PDNS_ServerId="localhost"
+export PDNS_Token="&lt;token&gt;"
+export PDNS_Ttl=60
+
+acme.sh --issue --dns dns_pdns -d example.com -d '*.example.com'</pre>
+  <p class="prose dim">Validation records propagate to the public nameservers within
+    a couple of seconds, so no extra <code>--dnssleep</code> is normally needed.</p>
+</section>
+
+<section class="panel">
+  <div class="panel-head"><h1>Dynamic DNS</h1></div>
+  <p class="prose">Hosts with changing addresses can keep an A/AAAA record up to date.
+    The endpoint is idempotent — if the address didn't change, nothing is rewritten —
+    so calling it from cron every few minutes is fine.</p>
+
+  <h2 class="subhead">raw API</h2>
+  <pre class="code"># set/update a record (omit &amp;ip=… to use the source address of the request)
+curl -X POST -H "X-API-Key: &lt;token&gt;" \
+  "{{ base }}/api/v1/ddns?name=home.example.com&amp;type=A&amp;ip=203.0.113.7&amp;ttl=300"
+
+# remove it
+curl -X DELETE -H "X-API-Key: &lt;token&gt;" \
+  "{{ base }}/api/v1/ddns?name=home.example.com&amp;type=AAAA"</pre>
+
+  <h2 class="subhead">ready-made client (bash / FreeBSD sh)</h2>
+  <p class="prose">Download
+    <a class="zone-link" href="/static/client/mojodns-ddns.sh">mojodns-ddns.sh</a> and
+    <a class="zone-link" href="/static/client/mojodns-ddns.conf.example">mojodns-ddns.conf.example</a>,
+    then:</p>
+  <pre class="code">fetch {{ base }}/static/client/mojodns-ddns.sh   # or curl -O / wget
+install -m 755 mojodns-ddns.sh /usr/local/bin/
+curl -o /usr/local/etc/mojodns-ddns.conf {{ base }}/static/client/mojodns-ddns.conf.example
+vi /usr/local/etc/mojodns-ddns.conf              # set PANEL_URL, TOKEN, RECORD
+
+# every 5 minutes from cron:
+*/5 * * * * /usr/local/bin/mojodns-ddns.sh</pre>
+
+  <p class="prose">The client discovers the host's public IPv4/IPv6 with
+    <code>curl&nbsp;-4 / curl&nbsp;-6</code> and updates the records. Behaviour is controlled by:</p>
+  <table class="kv kv-doc">
+    <tr><th>UPDATE_A / UPDATE_AAAA</th>
+        <td>which address families to manage (<code>true</code>/<code>false</code>)</td></tr>
+    <tr><th>DEL_STALE_A / DEL_STALE_AAAA</th>
+        <td>what to do when that family has <i>no connectivity</i>: <code>true</code> —
+            delete the now-stale record from DNS; <code>false</code> — leave it untouched (default)</td></tr>
+    <tr><th>IP4_URL / IP6_URL</th>
+        <td>where to learn the public address (default <code>https://ifconfig.me</code>);
+            set to <code>auto</code> to skip discovery and let the panel use the source
+            address of the update request</td></tr>
+    <tr><th>TTL / CURL_TIMEOUT / QUIET</th>
+        <td>record TTL (default 300), curl timeout, suppress normal output for cron</td></tr>
+  </table>
+  <p class="prose dim">A safety detail: if the IPv6 path answers with an IPv4 address
+    (NAT64 networks), the client treats it as "no IPv6" instead of publishing a broken
+    AAAA record.</p>
+</section>
+
+{% endblock %}

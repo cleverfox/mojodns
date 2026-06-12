@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}settings · {{ zone_display }} · mojodns{% endblock %}
+{% block content %}
+
+<div class="crumbs"><a href="/zones">zones</a> <span>/</span>
+  <a href="/zones/{{ zone|bare }}">{{ zone_display }}</a> <span>/</span> <strong>settings</strong></div>
+
+<section class="panel">
+  <div class="panel-head"><h1>SOA — start of authority</h1></div>
+  <form method="post" action="/zones/{{ zone|bare }}/soa" class="grid-form">
+    <label>primary nameserver <input name="soa_ns" value="{{ soa.mname }}" required></label>
+    <label>hostmaster e-mail <input name="soa_mail" value="{{ soa.email }}" required></label>
+    <label>refresh <input name="refresh" type="number" value="{{ soa.refresh }}"></label>
+    <label>retry <input name="retry" type="number" value="{{ soa.retry }}"></label>
+    <label>expire <input name="expire" type="number" value="{{ soa.expire }}"></label>
+    <label>minimum <input name="minimum" type="number" value="{{ soa.minimum }}"></label>
+    <p class="hint span2">serial <b class="mono">{{ soa.serial }}</b> updates automatically
+      on every change.</p>
+    <button class="btn btn-primary span2" type="submit">save SOA ▸</button>
+  </form>
+</section>
+
+<section class="panel panel-danger">
+  <div class="panel-head"><h1>danger zone</h1></div>
+  <p class="hint">Deleting the zone removes it from DNS permanently, including all
+    of its records.</p>
+  <form method="post" action="/zones/{{ zone|bare }}/delete"
+        onsubmit="return confirm('Delete zone {{ zone_display }}? This cannot be undone.')">
+    <button class="btn btn-danger" type="submit">delete zone {{ zone_display }} ✕</button>
+  </form>
+</section>
+
+{% endblock %}

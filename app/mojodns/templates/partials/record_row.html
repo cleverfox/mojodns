@@ -1,0 +1,21 @@
+<tr class="{{ 'is-disabled' if rec.disabled else '' }}">
+  <td class="mono">{{ rec.rel }}</td>
+  <td><span class="type-badge" data-type="{{ rec.type }}">{{ rec.type }}</span></td>
+  <td class="mono dim">{{ rec.prio if rec.prio is not none else '—' }}</td>
+  <td class="mono rec-data {{ 'ns-' + rec.ns_mark if rec.ns_mark is defined else '' }}">{{ rec.data }}{% if rec.ns_mark is defined %} {{ '✓' if rec.ns_mark == 'match' else '✗' }}{% endif %}</td>
+  <td class="mono dim">{{ rec.ttl }}</td>
+  <td class="t-right row-actions">
+    <button class="btn btn-ghost"
+            hx-get="/zones/{{ zone|bare }}/records/edit?name={{ rec.name|urlencode }}&rtype={{ rec.type|urlencode }}&content={{ rec.content|urlencode }}"
+            hx-target="closest tr" hx-swap="outerHTML">edit</button>
+    <form class="inline"
+          hx-post="/zones/{{ zone|bare }}/records/delete"
+          hx-target="#records-wrap" hx-swap="innerHTML"
+          hx-confirm="Delete {{ rec.rel }} {{ rec.type }} {{ rec.data }}?">
+      <input type="hidden" name="name" value="{{ rec.name }}">
+      <input type="hidden" name="rtype" value="{{ rec.type }}">
+      <input type="hidden" name="content" value="{{ rec.content }}">
+      <button class="btn btn-ghost btn-danger" type="submit">×</button>
+    </form>
+  </td>
+</tr>

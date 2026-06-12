@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}{{ title }} · mojodns{% endblock %}
+{% block content %}
+
+<div class="crumbs"><a href="{{ back }}">← back</a></div>
+
+<section class="panel">
+  <div class="panel-head"><h1>{{ title }}</h1></div>
+  <table class="data">
+    <thead><tr><th>when</th><th>user</th><th>event</th></tr></thead>
+    <tbody>
+      {% for entry, login in entries %}
+      <tr>
+        <td class="mono dim">{{ entry.created_at.strftime('%d.%m.%Y %H:%M') }}</td>
+        <td class="mono">{{ login or 'system' }}</td>
+        <td>{{ entry.message }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="3" class="empty">nothing here yet</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+
+{% endblock %}

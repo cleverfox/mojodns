@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% block title %}{{ target.login }} · mojodns{% endblock %}
+{% block content %}
+
+<div class="crumbs"><a href="/users">users</a> <span>/</span> <strong>{{ target.login }}</strong></div>
+
+<section class="panel">
+  <div class="panel-head">
+    <h1 class="mono">{{ target.login }}</h1>
+    <div class="chips">
+      <span class="chip">role <b>{{ target.role }}</b></span>
+      <span class="chip">since <b>{{ target.created_at.strftime('%d.%m.%Y') }}</b></span>
+    </div>
+    <div class="row-actions">
+      <a class="btn btn-ghost" href="/users/{{ target.id }}/history">history</a>
+    </div>
+  </div>
+
+  <form method="post" action="/users/{{ target.id }}" class="grid-form">
+    <label>e-mail <input name="email" type="email" value="{{ target.email or '' }}"></label>
+    <label>role
+      <select name="role">
+        <option value="owner" {{ 'selected' if target.role == 'owner' }}>owner</option>
+        <option value="admin" {{ 'selected' if target.role == 'admin' }}>admin</option>
+      </select>
+    </label>
+    <label class="span2">new password <input name="password" type="password"
+           placeholder="leave empty to keep current"></label>
+    <button class="btn btn-primary span2" type="submit">save ▸</button>
+  </form>
+</section>
+
+<section class="panel">
+  <div class="panel-head"><h1>zones</h1></div>
+  <div class="cols2">
+    <div>
+      <h2 class="subhead">owns</h2>
+      <ul class="ziplist">
+        {% for z in owned %}<li><a class="zone-link" href="/zones/{{ z|bare }}">{{ z|bare|unicode_name }}</a></li>
+        {% else %}<li class="dim">none</li>{% endfor %}
+      </ul>
+    </div>
+    <div>
+      <h2 class="subhead">can edit</h2>
+      <ul class="ziplist">
+        {% for z in granted %}<li><a class="zone-link" href="/zones/{{ z|bare }}">{{ z|bare|unicode_name }}</a></li>
+        {% else %}<li class="dim">none</li>{% endfor %}
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section class="panel">
+  <div class="panel-head">
+    <h1>API tokens</h1>
+    <form method="post" action="/users/{{ target.id }}/tokens" class="inline-form">
+      <input name="note" placeholder="note (optional)">
+      <button class="btn btn-primary" type="submit">+ token</button>
+    </form>
+  </div>
+  <table class="data">
+    <thead><tr><th>token</th><th>note</th><th>created</th><th class="t-right">actions</th></tr></thead>
+    <tbody>
+      {% for t in tokens %}
+      <tr>
+        <td class="mono">{{ t.token }}</td>
+        <td class="dim">{{ t.note or '—' }}</td>
+        <td class="dim">{{ t.created_at.strftime('%d.%m.%Y') }}</td>
+        <td class="t-right">
+          <form method="post" action="/users/{{ target.id }}/tokens/{{ t.id }}/delete" class="inline">
+            <button class="btn btn-ghost btn-danger" type="submit">×</button>
+          </form>
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="4" class="empty">no tokens — used for GET /api/v1/zones?token=… and as PDNS_Token for acme.sh dns_pdns</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+
+<section class="panel panel-danger">
+  <div class="panel-head"><h1>danger zone</h1></div>
+  <form method="post" action="/users/{{ target.id }}/delete"
+        onsubmit="return confirm('Delete user {{ target.login }}?')">
+    <button class="btn btn-danger" type="submit">delete user {{ target.login }} ✕</button>
+  </form>
+</section>
+
+{% endblock %}

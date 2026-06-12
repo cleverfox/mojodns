@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}sign in · mojodns{% endblock %}
+{% block content %}
+<div class="login-stage">
+  <div class="login-card">
+    <div class="login-mark">
+      <span class="wordmark-block big">MOJO</span><span class="wordmark-rest big">DNS</span><span class="cursor" aria-hidden="true"></span>
+    </div>
+    <p class="login-sub">// DNS management — authorized operators only</p>
+
+    <form method="post" action="/login" class="login-form">
+      <label>login
+        <input type="text" name="user" autocomplete="username" autofocus required>
+      </label>
+      <label>passphrase
+        <input type="password" name="pass" autocomplete="current-password" required>
+      </label>
+      <button class="btn btn-primary btn-wide" type="submit">authenticate ▸</button>
+    </form>
+  </div>
+</div>
+{% endblock %}
