@@ -11,6 +11,22 @@
       <button class="btn" type="submit" title="compare each zone's NS records with live delegation (recursive DNS)">verify zones ✓</button>
     </form>
     <details class="reveal">
+      <summary class="btn">⇪ import zone</summary>
+      <form method="post" action="/zones/import" enctype="multipart/form-data" class="grid-form">
+        <label class="span2">zone name
+          <input name="name" placeholder="empty = take from the file's SOA; a different name clones the zone">
+        </label>
+        <label class="span2">zone file
+          <input type="file" name="file" accept=".zone,.txt,text/plain">
+        </label>
+        <label class="span2">…or paste zone text
+          <textarea name="text" rows="6" class="mono"
+                    placeholder="example.com. 86400 IN SOA ns1… (output of export zone)"></textarea>
+        </label>
+        <button class="btn btn-primary span2" type="submit">import zone ▸</button>
+      </form>
+    </details>
+    <details class="reveal">
       <summary class="btn btn-primary">+ new zone</summary>
       <form method="post" action="/zones" class="grid-form">
         <label class="span2">zone name

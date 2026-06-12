@@ -1,7 +1,7 @@
 import re
 from collections import defaultdict
 
-from fastapi import APIRouter, Depends, Form, Request
+from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
 from fastapi.responses import PlainTextResponse, RedirectResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -12,7 +12,7 @@ from ..deps import current_user, require_admin, user_zones, zone_guard
 from ..dnsutil import Soa, build_content, dotted, email_to_rname, flatten_rrsets, split_prio
 from ..idn import to_ascii, to_unicode
 from ..pdns import PdnsError, canonical, pdns
-from ..axfr import AxfrError, axfr_text
+from ..axfr import AxfrError, ZoneParseError, axfr_text, parse_zone_text
 from ..templating import flash, render
 from ..verify import check_zone, check_zones, load_checks, store_results, summarize
 
@@ -73,6 +73,10 @@ def _zone_rows(db: Session, user: User) -> list[dict]:
     return rows
 
 
+def _valid_zone_name(zone: str) -> bool:
+    return re.fullmatch(r"(?:[a-z0-9_](?:[a-z0-9_-]{0,61}[a-z0-9_])?\.)+", zone) is not None
+
+
 @router.get("/zones")
 def dashboard(request: Request, user: User = Depends(current_user), db: Session = Depends(get_db)):
     zones = _zone_rows(db, user)
@@ -95,7 +99,7 @@ def zone_create(
 ):
     s = settings()
     zone = canonical(to_ascii(name))
-    if not re.fullmatch(r"(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+", zone):
+    if not _valid_zone_name(zone):
         flash(request, f"'{name}' is not a valid zone name", "error")
         return RedirectResponse("/zones", status_code=303)
     soa = Soa(
@@ -135,6 +139,50 @@ def _mark_ns(records: list[dict], zone: str, check) -> None:
     for r in records:
         if r["type"] == "NS" and canonical(r["name"]) == zone:
             r["ns_mark"] = "match" if r["content"] in resolved else "miss"
+
+
+@router.post("/zones/import")
+async def zone_import(
+    request: Request,
+    name: str = Form(""),
+    text: str = Form(""),
+    file: UploadFile | None = File(None),
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+):
+    if file and file.filename:
+        try:
+            text = (await file.read()).decode()
+        except UnicodeDecodeError:
+            flash(request, "Uploaded file is not a text zone file", "error")
+            return RedirectResponse("/zones", status_code=303)
+    if not text.strip():
+        flash(request, "Paste zone text or choose a file to import", "error")
+        return RedirectResponse("/zones", status_code=303)
+
+    try:
+        zone, rrsets = parse_zone_text(text, to_ascii(name) if name.strip() else None)
+    except ZoneParseError as e:
+        flash(request, str(e), "error")
+        return RedirectResponse("/zones", status_code=303)
+
+    zone = canonical(zone)
+    if not _valid_zone_name(zone):
+        flash(request, f"'{zone}' is not a valid zone name", "error")
+        return RedirectResponse("/zones", status_code=303)
+
+    try:
+        pdns.create_zone(zone, kind="Master", catalog=settings().catalog_zone, rrsets=rrsets)
+        pdns.ensure_tsig_allow_axfr(zone)
+    except PdnsError as e:
+        flash(request, str(e), "error")
+        return RedirectResponse("/zones", status_code=303)
+
+    db.add(ZoneAccess(zone=zone, user_id=user.id, is_owner=True))
+    nrec = sum(len(rr["records"]) for rr in rrsets)
+    log_history(db, user.id, "zone", zone, f"Import zone {zone} ({nrec} records)")
+    flash(request, f"Zone {to_unicode(zone)} imported ({nrec} records)")
+    return RedirectResponse(f"/zones/{zone.rstrip('.')}", status_code=303)
 
 
 @router.post("/zones/verify")

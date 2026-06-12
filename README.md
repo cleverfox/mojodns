@@ -123,9 +123,15 @@ re-check runs every `VERIFY_INTERVAL_HOURS` (default 24, 0 disables).
 
 **view zone ≡** on a zone page performs a live TSIG-signed AXFR against
 pdns (`PDNS_AXFR_HOST:PDNS_AXFR_PORT`) and shows the zone-file text exactly
-as a secondary receives it, with a download option — doubling as a
-transfer-path health check: if this fails, the slaves can't transfer
-either.
+as a secondary receives it — doubling as a transfer-path health check: if
+this fails, the slaves can't transfer either. **export zone ⤓** downloads
+the same text as `<zone>.zone`.
+
+**⇪ import zone** on the dashboard creates a zone from exported text
+(upload or paste). With the name field empty the zone name is taken from
+the file's SOA (restore); a *different* name clones the zone — owner names
+and in-zone record data are re-rooted to the new origin, out-of-zone names
+are kept. DNSSEC records (RRSIG/NSEC/DNSKEY…) are skipped on import.
 
 ## ACME / Let's Encrypt (acme.sh)
 
