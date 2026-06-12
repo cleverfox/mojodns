@@ -84,5 +84,38 @@ dig @master -p 1053 example.com AXFR -y "hmac-sha256:mojodns-xfr:<secret>"
 nsd-control zonestatus ; journalctl -u nsd | grep TSIG
 ```
 
+## Old NSD (< 4.9.0) without catalog support
+
+For slaves that cannot be upgraded yet, `nsd-catalog-sync.sh` provides the
+same autoconfiguration without native catalog support (verified down to
+NSD 4.7.0). Instead of `catalog: consumer`, a cron job AXFRs the catalog
+zone with dig/drill, parses the RFC 9432 member PTR records, regenerates an
+include file with one secondary-zone stanza per member, and runs
+`nsd-control reconfig` — only when the zone list actually changed. The
+spiritual successor of the old `nsd_config_generator.sh`, reading the
+standard catalog instead of the old PTR-view hack.
+
+Setup:
+
+```sh
+install -m 755 nsd-catalog-sync.sh /usr/local/bin/
+cp nsd-catalog-sync.conf.example /usr/local/etc/nsd-catalog-sync.conf  # edit
+
+# nsd.conf: add the key: block (for TSIG) and
+#     include: "/etc/nsd/zones.catalog.conf"
+touch /etc/nsd/zones.catalog.conf && service nsd restart
+
+/usr/local/bin/nsd-catalog-sync.sh        # first run, then:
+# */5 * * * * /usr/local/bin/nsd-catalog-sync.sh
+```
+
+Notes: needs `dig` (bind-tools) or `drill`, and a remote-control socket for
+`nsd-control` (`control-interface: /run/nsd.sock` works without certs).
+Old slaves learn about new/removed zones on the cron schedule (≤ 5 min with
+the example crontab) rather than via NOTIFY-triggered catalog updates;
+record changes inside existing zones still propagate instantly via NOTIFY.
+On failed transfers (bad TSIG, master down) the script keeps the existing
+config untouched and exits non-zero.
+
 Firewall note: the hidden master only needs 53/tcp+udp open **towards the
 slave IPs**; nothing else should reach it. The slaves are the published NS.

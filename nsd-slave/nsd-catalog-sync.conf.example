@@ -1,0 +1,19 @@
+# nsd-catalog-sync configuration (for NSD < 4.9.0 without native catalog
+# support); install as /usr/local/etc/nsd-catalog-sync.conf
+
+MASTER="192.0.2.1"          # hidden master IP
+MASTER_PORT=53
+CATALOG="catalog.mojodns"   # no trailing dot needed
+
+# TSIG (leave empty for IP-ACL-only transfers)
+TSIG_NAME="mojodns-xfr"
+TSIG_ALGO="hmac-sha256"
+TSIG_SECRET=""
+
+# generated include file — add `include: "/etc/nsd/zones.catalog.conf"`
+# to nsd.conf and create it empty before the first run
+ZONES_CONF="/etc/nsd/zones.catalog.conf"
+NSD_CONF="/etc/nsd/nsd.conf"
+NSD_CONTROL="nsd-control"
+
+QUIET=false

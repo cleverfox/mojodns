@@ -58,10 +58,10 @@ Check a secondary with `nsd -v`. Distro packages, for orientation
 (repology, 2026-06): Debian 12 ships 4.6.1 and Ubuntu 24.04 ships 4.8.0 —
 **both too old**; Debian 13 (4.12), Ubuntu 25.04 (4.11), FreeBSD ports
 (4.14), Alpine 3.24 (4.14) and EPEL 9 (4.14) are all fine. For hosts stuck
-on an older NSD, either install upstream NSD from source/backports, or keep
-that slave on a static zone list (the old generator-script approach) until
-it can be upgraded — catalog membership is just a hint, serving zones from
-a manually maintained `zone:` list still works.
+on an older NSD, either install upstream NSD from source/backports, or use
+`nsd-slave/nsd-catalog-sync.sh` — a cron script that AXFRs the catalog zone
+and regenerates the slave's zone list for NSD versions without native
+catalog support (verified with NSD 4.7; see `nsd-slave/README.md`).
 
 ## Configuring the NSD secondaries
 
