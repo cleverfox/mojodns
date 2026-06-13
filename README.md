@@ -14,14 +14,14 @@ Rewrite of the old `mojodns-perl` (Mojolicious) DNS management panel:
 ## Architecture
 
 ```
-                 ┌────────────────────── docker compose ─────────────────────┐
+                 ┌────────────────────── docker compose ──────────────────────┐
                  │                                                            │
  admin browser ──┤► web (FastAPI/HTMX) ──REST──► pdns (hidden primary) ◄──┐   │
                  │        │                          │                    │   │
                  │        └──── users/ACL/history ───┤ gpgsql             │   │
                  │                                   ▼                    │   │
                  │                               postgres ────────────────┘   │
-                 └──────────────────────────────────│──────────────────────---┘
+                 └──────────────────────────────────│─────────────────────────┘
                                                     │ NOTIFY + AXFR (catalog
                                                     ▼  zone + member zones)
                                      public NSD secondaries (the published NS)
