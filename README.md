@@ -46,6 +46,10 @@ docker compose logs -f web
 Open http://localhost:8000 — first run creates an `admin` user with the
 password from `BOOTSTRAP_ADMIN_PASSWORD` (printed in the log if unset).
 
+For a full production install on a fresh Ubuntu server — Docker, nginx, and
+HTTPS via acme.sh/Let's Encrypt, plus the port‑53 and nginx gotchas — see
+**[INSTALL.md](INSTALL.md)**.
+
 ## Version requirements
 
 | Component | Minimum | Why | Used here |

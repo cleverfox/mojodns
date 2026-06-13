@@ -3,3 +3,7 @@ __pycache__/
 .venv/
 .env
 .pytest_cache/
+*.log
+install.log
+.env.*
+!.env.example

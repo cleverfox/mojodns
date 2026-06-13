@@ -45,6 +45,21 @@
 
 <section class="panel">
   <div class="panel-head">
+    <h1>slaves</h1>
+    <button class="btn btn-ghost" style="margin-left:auto"
+            hx-get="/zones/{{ zone|bare }}/slaves" hx-target="#slave-results" hx-indicator="#slave-spin"
+            title="poll each published nameserver and compare its SOA serial with the master">
+      check slaves ⟲</button>
+    <span id="slave-spin" class="htmx-indicator dim">polling…</span>
+  </div>
+  <div id="slave-results">
+    <p class="hint">Poll each published nameserver and compare its SOA serial against the
+      master — green = in sync, yellow = stale serial, red = not answering.</p>
+  </div>
+</section>
+
+<section class="panel">
+  <div class="panel-head">
     <h1>records <span class="count">{{ records|length }}</span></h1>
     <input class="search" type="search" placeholder="filter records…" data-filter="#records-table">
   </div>

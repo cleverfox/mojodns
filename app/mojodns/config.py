@@ -12,12 +12,30 @@ class Settings(BaseSettings):
     session_secret: str = "dev-secret-change-me"
 
     catalog_zone: str = "catalog.mojodns."
-    # TSIG key *name* for outgoing zone transfers (TSIG-ALLOW-AXFR metadata
-    # is set on every zone when non-empty); the key itself lives in pdns
+    # Primary TSIG key: its name is allowed for AXFR on every zone, and the
+    # panel uses its secret for its own transfers (zone text view). The key
+    # itself lives in pdns (pdnsutil generate-tsig-key).
     tsig_key: str = ""
-    # secret + algorithm let the panel itself AXFR zones (zone text view)
     tsig_secret: str = ""
     tsig_algo: str = "hmac-sha256"
+    # Additional TSIG key *names* also allowed for AXFR on every zone — one
+    # per trust domain (e.g. a separate key for a third-party secondary so
+    # you never share the primary secret). Secrets live in pdns; the panel
+    # only needs the names. Comma-separated.
+    tsig_extra_keys: str = ""
+
+    @property
+    def tsig_key_names(self) -> list[str]:
+        """All TSIG key names allowed for AXFR (primary first, then extras)."""
+        names = [self.tsig_key] if self.tsig_key else []
+        names += [k.strip() for k in self.tsig_extra_keys.split(",") if k.strip()]
+        # de-dup, preserve order
+        seen, out = set(), []
+        for n in names:
+            if n not in seen:
+                seen.add(n)
+                out.append(n)
+        return out
 
     # where the panel sends its own AXFR requests (the pdns DNS listener)
     pdns_axfr_host: str = "pdns"

@@ -39,10 +39,11 @@ def bootstrap() -> None:
         try:
             pdns.ensure_catalog_zone()
             log.info("Catalog zone %s present", settings().catalog_zone)
-            if settings().tsig_key:
+            if settings().tsig_key_names:
                 for z in pdns.list_zones():
                     pdns.ensure_tsig_allow_axfr(z["name"])
-                log.info("TSIG-ALLOW-AXFR=%s ensured on all zones", settings().tsig_key)
+                log.info("TSIG-ALLOW-AXFR keys %s ensured on all zones",
+                         ",".join(settings().tsig_key_names))
             return
         except Exception as e:  # pdns may still be starting
             log.info("Waiting for PowerDNS API (%s)", e)

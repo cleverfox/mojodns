@@ -13,6 +13,7 @@ from ..dnsutil import Soa, build_content, dotted, email_to_rname, flatten_rrsets
 from ..idn import to_ascii, to_unicode
 from ..pdns import PdnsError, canonical, pdns
 from ..axfr import AxfrError, ZoneParseError, axfr_text, parse_zone_text
+from ..slaves import check_slaves, summarize as slave_summary
 from ..templating import flash, render
 from ..verify import check_zone, check_zones, load_checks, store_results, summarize
 
@@ -446,6 +447,21 @@ def zone_axfr(request: Request, raw: int = 0, zone: str = Depends(zone_guard),
             "Content-Disposition": f'attachment; filename="{zone.rstrip(".")}.zone"'})
     return render(request, "zone_axfr.html", user=user, zone=zone,
                   zone_display=to_unicode(zone.rstrip(".")), text=text, count=count)
+
+
+@router.get("/zones/{zone}/slaves")
+def zone_slaves(request: Request, zone: str = Depends(zone_guard),
+                user: User = Depends(current_user), db: Session = Depends(get_db)):
+    try:
+        zdata = pdns.get_zone(zone)
+    except PdnsError as e:
+        return render(request, "partials/slave_results.html", user=user, zone=zone,
+                      master_serial=None, rows=[], error=str(e))
+    master_serial = zdata.get("serial")
+    rows = check_slaves(zone, master_serial)
+    log_history(db, user.id, "zone", zone, f"Check slaves: {slave_summary(rows)}")
+    return render(request, "partials/slave_results.html", user=user, zone=zone,
+                  master_serial=master_serial, rows=rows, error=None)
 
 
 @router.get("/zones/{zone}/history")

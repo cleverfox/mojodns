@@ -78,6 +78,7 @@ services:
       TSIG_KEY: ${TSIG_KEY:-}
       TSIG_SECRET: ${TSIG_SECRET:-}
       TSIG_ALGO: ${TSIG_ALGO:-hmac-sha256}
+      TSIG_EXTRA_KEYS: ${TSIG_EXTRA_KEYS:-}
       PDNS_AXFR_HOST: pdns
       PDNS_AXFR_PORT: 1053
       VERIFY_RESOLVERS: ${VERIFY_RESOLVERS:-1.1.1.1,8.8.8.8}

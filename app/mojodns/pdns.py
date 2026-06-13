@@ -111,17 +111,18 @@ class PdnsClient:
         )
 
     def ensure_tsig_allow_axfr(self, zone: str) -> None:
-        """Mark the zone as transferable with the configured TSIG key.
+        """Allow AXFR of the zone with every configured TSIG key.
 
         The API forbids writing TSIG-ALLOW-AXFR via the metadata endpoint;
         the equivalent zone field is master_tsig_key_ids (key id = canonical
-        key name)."""
-        key = settings().tsig_key
-        if key:
+        key name). Setting several keys lets any of them transfer the zone —
+        one key per trust domain."""
+        names = settings().tsig_key_names
+        if names:
             self._req(
                 "PUT",
                 f"/zones/{canonical(zone)}",
-                json={"master_tsig_key_ids": [canonical(key)]},
+                json={"master_tsig_key_ids": [canonical(n) for n in names]},
             )
 
     # -- catalog ------------------------------------------------------------
