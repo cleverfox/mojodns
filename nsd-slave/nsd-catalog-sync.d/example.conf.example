@@ -1,0 +1,23 @@
+# One file per mojodns installation in SOURCES_DIR
+# (default /usr/local/etc/nsd-catalog-sync.d/). Copy to e.g. site-a.conf.
+#
+# A single shared NSD can follow any number of these — NSD itself allows
+# only one native catalog consumer, so nsd-catalog-sync.sh aggregates the
+# member zones of every source into one generated include file.
+#
+# Each source's zones get request-xfr / allow-notify pointing at THAT
+# installation's master and TSIG key, so record changes still arrive via
+# NOTIFY straight from the owning master.
+#
+# If two installations advertise the same zone name, the first source
+# processed wins and the collision is logged (keep zone names disjoint).
+
+MASTER="192.0.2.1"            # this installation's hidden master IP
+MASTER_PORT=53
+CATALOG="catalog.mojodns"     # its CATALOG_ZONE (no trailing dot needed)
+
+# TSIG for this installation (leave empty for IP-ACL-only transfers).
+# The key name must also appear in a key: block in nsd.conf.
+TSIG_NAME="site-a-xfr"
+TSIG_ALGO="hmac-sha256"
+TSIG_SECRET="base64-secret-from-this-installations-pdns"

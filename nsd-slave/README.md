@@ -117,5 +117,38 @@ record changes inside existing zones still propagate instantly via NOTIFY.
 On failed transfers (bad TSIG, master down) the script keeps the existing
 config untouched and exits non-zero.
 
+## Sharing one NSD across several mojodns installations
+
+NSD natively allows **only a single catalog consumer zone** — configuring
+two makes NSD *ignore all of them* (catalog processing is disabled
+entirely). So a shared NSD that must follow more than one mojodns
+installation cannot use native `catalog: consumer`; use
+`nsd-catalog-sync.sh` in **multi-source mode** instead, which aggregates
+several catalogs into one generated include file.
+
+Drop one config file per installation into `SOURCES_DIR`
+(default `/usr/local/etc/nsd-catalog-sync.d/`, see
+`nsd-catalog-sync.d/example.conf.example`):
+
+```sh
+mkdir -p /usr/local/etc/nsd-catalog-sync.d
+cp site-a.conf site-b.conf /usr/local/etc/nsd-catalog-sync.d/   # MASTER/CATALOG/TSIG_* each
+# nsd.conf needs one key: block per distinct TSIG key used by the sources
+*/5 * * * * /usr/local/bin/nsd-catalog-sync.sh
+```
+
+Each source's zones get `request-xfr`/`allow-notify` pointed at *that*
+installation's master and key, so per-record NOTIFY still flows from the
+owning master. Behaviour:
+
+* **Disjoint zone names are required** — if two installations advertise the
+  same zone, the first source processed wins and the collision is logged.
+* **Fail-safe**: if *any* source's transfer fails, the whole update is
+  aborted and the existing config is kept untouched — a single unreachable
+  master never drops another installation's zones from NSD.
+
+(Single-source mode — one `MASTER`/`CATALOG` in the main config, no
+`SOURCES_DIR` — keeps working unchanged.)
+
 Firewall note: the hidden master only needs 53/tcp+udp open **towards the
 slave IPs**; nothing else should reach it. The slaves are the published NS.
