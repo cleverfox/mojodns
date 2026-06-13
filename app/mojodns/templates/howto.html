@@ -95,4 +95,51 @@ vi /usr/local/etc/mojodns-ddns.conf              # set PANEL_URL, TOKEN, RECORD
     AAAA record.</p>
 </section>
 
+<section class="panel">
+  <div class="panel-head"><h1>Dynamic updates (RFC 2136)</h1></div>
+  <p class="prose">For tools that speak the standard <b>DNS UPDATE</b> protocol —
+    <code>nsupdate</code>, <code>certbot dns-rfc2136</code>, Kubernetes
+    <code>external-dns</code>, Terraform's <code>dns</code> provider — mojodns accepts
+    RFC 2136 updates directly against the master at
+    <code>{% if master_host %}{{ master_host }}{% else %}&lt;master&gt;{% endif %}:53</code>
+    (UDP&nbsp;+&nbsp;TCP). This is separate from the HTTP Dynamic-DNS endpoint above:
+    no API token is involved — updates are authorised by a <b>TSIG key</b> (and,
+    optionally, a source-IP allow-list) that you configure <b>per zone</b>.</p>
+
+  <h2 class="subhead">enable it for a zone</h2>
+  <p class="prose">Open the zone, go to <b>settings → dynamic updates (RFC 2136)</b>, and
+    <b>generate</b> a key (the panel shows the secret) or <b>import</b> one a tool gave you.
+    Each zone keeps its own dedicated update keys, distinct from any transfer keys.
+    Optionally add an IP/CIDR allow-list. <b>A zone with no key and no allow-list rejects
+    every update</b> — nothing is open by default.</p>
+
+  <h2 class="subhead">nsupdate</h2>
+  <pre class="code">nsupdate -y 'hmac-sha256:example.com-update:&lt;secret&gt;' &lt;&lt;'EOF'
+server {% if master_host %}{{ master_host }}{% else %}&lt;master&gt;{% endif %}
+
+zone example.com.
+update delete www.example.com. A
+update add    www.example.com. 300 A 203.0.113.7
+send
+EOF</pre>
+  <p class="prose dim">The algorithm, key name and secret must match exactly what the
+    panel shows for the zone. Serials are bumped automatically and the change propagates
+    to the public nameservers within a couple of seconds.</p>
+
+  <h2 class="subhead">certbot (DNS-01 without acme.sh)</h2>
+  <pre class="code"># /etc/letsencrypt/rfc2136.ini  (chmod 600)
+dns_rfc2136_server  = {% if master_host %}{{ master_host }}{% else %}&lt;master&gt;{% endif %}
+
+dns_rfc2136_port    = 53
+dns_rfc2136_name    = example.com-update
+dns_rfc2136_secret  = &lt;secret&gt;
+dns_rfc2136_algorithm = HMAC-SHA256
+
+certbot certonly --dns-rfc2136 \
+  --dns-rfc2136-credentials /etc/letsencrypt/rfc2136.ini \
+  -d example.com -d '*.example.com'</pre>
+  <p class="prose dim">A TSIG key may only touch the single zone it's attached to, so issue
+    a separate key per zone you want to manage this way.</p>
+</section>
+
 {% endblock %}

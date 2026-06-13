@@ -1,18 +1,34 @@
 <tr class="check-panel">
   <td colspan="6">
     <div class="check-head">
-      <span class="subhead">checks · <span class="mono">{{ hostdisp }}</span> → <span class="mono">{{ ip }}</span></span>
+      <span class="subhead">checks · <span class="mono">{{ hostdisp }}</span></span>
+      {% if ips %}
       <span class="check-controls">
+        <label class="check-port">target
+          {% if ips|length > 1 %}
+          <select name="ip">
+            {% for a in ips %}<option value="{{ a }}"{{ ' selected' if a == sel else '' }}>{{ a }}</option>{% endfor %}
+          </select>
+          {% else %}
+          <input type="hidden" name="ip" value="{{ ips[0] }}"><span class="mono">{{ ips[0] }}</span>
+          {% endif %}
+        </label>
         <label class="check-port">port <input name="port" type="number" value="443" min="1" max="65535"></label>
-        <button class="btn btn-ghost" hx-get="/zones/{{ zone|bare }}/check?kind=tcp&host={{ host|urlencode }}&ip={{ ip|urlencode }}"
+        <button class="btn btn-ghost" hx-get="/zones/{{ zone|bare }}/check?kind=tcp&host={{ host|urlencode }}"
                 hx-include="closest .check-panel" hx-target="#{{ slug }}" hx-indicator="#{{ slug }}-spin">check TCP</button>
-        <button class="btn btn-ghost" hx-get="/zones/{{ zone|bare }}/check?kind=http&host={{ host|urlencode }}&ip={{ ip|urlencode }}"
-                hx-target="#{{ slug }}" hx-indicator="#{{ slug }}-spin">check HTTP</button>
-        <button class="btn btn-ghost" hx-get="/zones/{{ zone|bare }}/check?kind=https&host={{ host|urlencode }}&ip={{ ip|urlencode }}"
-                hx-target="#{{ slug }}" hx-indicator="#{{ slug }}-spin">check HTTPS</button>
+        <button class="btn btn-ghost" hx-get="/zones/{{ zone|bare }}/check?kind=http&host={{ host|urlencode }}"
+                hx-include="closest .check-panel" hx-target="#{{ slug }}" hx-indicator="#{{ slug }}-spin">check HTTP</button>
+        <button class="btn btn-ghost" hx-get="/zones/{{ zone|bare }}/check?kind=https&host={{ host|urlencode }}"
+                hx-include="closest .check-panel" hx-target="#{{ slug }}" hx-indicator="#{{ slug }}-spin">check HTTPS</button>
         <span id="{{ slug }}-spin" class="htmx-indicator dim">checking…</span>
         <button type="button" class="btn btn-ghost" title="close" onclick="this.closest('tr').remove()">×</button>
       </span>
+      {% else %}
+      <span class="check-controls">
+        <span class="dim">no A/AAAA addresses to check (CNAME target did not resolve)</span>
+        <button type="button" class="btn btn-ghost" title="close" onclick="this.closest('tr').remove()">×</button>
+      </span>
+      {% endif %}
     </div>
     <div id="{{ slug }}" class="check-result"></div>
   </td>

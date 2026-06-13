@@ -9,6 +9,10 @@
     <button class="btn btn-ghost" title="check TCP / HTTP / HTTPS to this IP"
             hx-get="/zones/{{ zone|bare }}/checks?host={{ rec.name|urlencode }}&ip={{ rec.data|urlencode }}"
             hx-target="closest tr" hx-swap="afterend">check</button>
+    {% elif rec.type == 'CNAME' %}
+    <button class="btn btn-ghost" title="check TCP / HTTP / HTTPS to the CNAME target's address"
+            hx-get="/zones/{{ zone|bare }}/checks?host={{ rec.name|urlencode }}"
+            hx-target="closest tr" hx-swap="afterend">check</button>
     {% endif %}
     {% if rec.type == 'TXT' and 'v=spf1' in rec.data|lower %}
     <a class="btn btn-ghost" title="open the SPF constructor"

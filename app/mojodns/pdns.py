@@ -4,11 +4,32 @@ All zone names handled here are canonical: lowercase ASCII (punycode for
 IDN) with a trailing dot.
 """
 
+import ipaddress
+import re
 from typing import Any
 
 import httpx
 
 from .config import settings
+
+
+def parse_update_cidrs(text: str) -> list[str]:
+    """Parse a comma/space-separated allow-list into canonical CIDR strings.
+
+    Accepts bare IPs (treated as /32 or /128) and v4/v6 CIDR ranges. Raises
+    ValueError naming the first bad token. Used for the RFC 2136
+    ALLOW-DNSUPDATE-FROM metadata."""
+    out: list[str] = []
+    for tok in re.split(r"[\s,]+", text.strip()):
+        if not tok:
+            continue
+        try:
+            net = str(ipaddress.ip_network(tok, strict=False))
+        except ValueError:
+            raise ValueError(tok)
+        if net not in out:
+            out.append(net)
+    return out
 
 
 class PdnsError(Exception):
@@ -148,6 +169,53 @@ class PdnsClient:
         else:
             self.delete_zone_metadata(zone, "ALSO-NOTIFY")
 
+    # -- RFC 2136 dynamic update permissions --------------------------------
+    #
+    # pdns gates every DNS UPDATE on TWO independent checks, ANDed together:
+    #   1. source IP must match ALLOW-DNSUPDATE-FROM (per-zone) or the global
+    #      allow-dnsupdate-from (default 127.0.0.0/8);
+    #   2. if TSIG-ALLOW-DNSUPDATE is set, the packet must be signed by a listed
+    #      key. TSIG ALONE NEVER AUTHORISES — the IP gate is always required.
+    # So to get "signed updates from anywhere" we open the IP gate to all
+    # (UPDATE_ANY) while keeping a TSIG key mandatory; a narrower list further
+    # restricts. We never write ALLOW-DNSUPDATE-FROM without a TSIG key, which
+    # would otherwise be an open, unauthenticated update relay.
+
+    UPDATE_ANY = ["0.0.0.0/0", "::/0"]
+
+    def get_zone_update_keys(self, zone: str) -> list[str]:
+        """TSIG key names allowed to DNS-UPDATE the zone (no trailing dot)."""
+        return [k.rstrip(".") for k in self.get_zone_metadata(zone, "TSIG-ALLOW-DNSUPDATE")]
+
+    def get_zone_update_ips(self, zone: str) -> list[str]:
+        """User-facing source-IP restriction; the open catch-all reads back as
+        [] (meaning 'any source, TSIG still required')."""
+        ips = self.get_zone_metadata(zone, "ALLOW-DNSUPDATE-FROM")
+        return [] if set(ips) == set(self.UPDATE_ANY) else ips
+
+    def _write_update_access(self, zone: str, keys: list[str], cidrs: list[str]) -> None:
+        if keys:
+            # pdns matches TSIG-ALLOW-DNSUPDATE against the bare tsigkey name (no
+            # trailing dot — as `pdnsutil set-meta ... TSIG-ALLOW-DNSUPDATE <name>`),
+            # NOT the dotted form used for master_tsig_key_ids; a trailing dot
+            # silently fails to match and every update is REFUSED.
+            self.set_zone_metadata(zone, "TSIG-ALLOW-DNSUPDATE",
+                                   [k.rstrip(".").lower() for k in keys])
+            self.set_zone_metadata(zone, "ALLOW-DNSUPDATE-FROM",
+                                   cidrs if cidrs else self.UPDATE_ANY)
+        else:
+            # no key -> updates fully off (and never leave an open IP allow-list)
+            self.delete_zone_metadata(zone, "TSIG-ALLOW-DNSUPDATE")
+            self.delete_zone_metadata(zone, "ALLOW-DNSUPDATE-FROM")
+
+    def set_zone_update_keys(self, zone: str, names: list[str]) -> None:
+        # preserve the user's explicit IP restriction across key changes
+        self._write_update_access(zone, names, self.get_zone_update_ips(zone))
+
+    def set_zone_update_ips(self, zone: str, cidrs: list[str]) -> None:
+        # only meaningful alongside a key; with no key this stays off
+        self._write_update_access(zone, self.get_zone_update_keys(zone), cidrs)
+
     def set_zone_tsig_keys(self, zone: str, names: list[str]) -> None:
         """Set exactly which TSIG keys may AXFR the zone.
 
@@ -198,16 +266,20 @@ class PdnsClient:
         self._req("DELETE", f"/tsigkeys/{canonical(name)}")
 
     def tsig_key_in_use(self, name: str, *, except_zone: str | None = None) -> bool:
-        """True if any zone (other than except_zone) lists this key for AXFR.
+        """True if any zone (other than except_zone) references this key — for
+        AXFR (master_tsig_key_ids) or for RFC2136 updates (TSIG-ALLOW-DNSUPDATE).
 
-        master_tsig_key_ids only appears in the per-zone detail, not the list,
-        so each zone is fetched individually (rare op: key delete / mode switch)."""
+        Per-zone detail/metadata is fetched individually (rare op: key delete /
+        mode switch), so we only delete a tsig key when truly unreferenced."""
         cname = canonical(name)
+        bare = name.rstrip(".")
         skip = canonical(except_zone) if except_zone else None
         for z in self.list_zones():
             if z["name"] == skip:
                 continue
             if cname in (self.get_zone(z["name"]).get("master_tsig_key_ids") or []):
+                return True
+            if bare in self.get_zone_update_keys(z["name"]):
                 return True
         return False
 

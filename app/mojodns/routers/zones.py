@@ -12,7 +12,7 @@ from ..deps import current_user, require_admin, user_zones, zone_guard
 from ..dnsutil import Soa, build_content, dotted, email_to_rname, flatten_rrsets, quote_txt, split_prio
 from ..spf import is_spf, parse_spf
 from ..idn import to_ascii, to_unicode
-from ..pdns import PdnsError, canonical, is_custom_zone, pdns
+from ..pdns import PdnsError, canonical, is_custom_zone, parse_update_cidrs, pdns
 from ..axfr import AxfrError, ZoneParseError, axfr_text, parse_zone_text
 from ..slaves import apex_ns, check_delegation, check_slaves, summarize as slave_summary
 from ..notifier import notify_zone, parse_targets
@@ -360,6 +360,75 @@ def zone_key_delete(request: Request, keyname: str, zone: str = Depends(zone_gua
     return RedirectResponse(f"/zones/{zone.rstrip('.')}/edit", status_code=303)
 
 
+# -- RFC 2136 dynamic updates ----------------------------------------------
+
+@router.post("/zones/{zone}/dnsupdate/keys")
+def zone_update_key_add(request: Request, action: str = Form("generate"),
+                        name: str = Form(...), algorithm: str = Form("hmac-sha256"),
+                        secret: str = Form(""), zone: str = Depends(zone_guard),
+                        user: User = Depends(current_user), db: Session = Depends(get_db)):
+    key_name = name.strip().rstrip(".").lower()
+    if not re.fullmatch(r"[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*", key_name or ""):
+        flash(request, f"'{name}' is not a valid key name", "error")
+        return RedirectResponse(f"/zones/{zone.rstrip('.')}/edit", status_code=303)
+    try:
+        pdns.create_tsig_key(key_name, algorithm,
+                             secret=secret.strip() if action == "import" else None)
+        keys = pdns.get_zone_update_keys(zone)
+        if key_name not in keys:
+            keys.append(key_name)
+        pdns.set_zone_update_keys(zone, keys)
+        log_history(db, user.id, "zone", zone,
+                    f"Add dynamic-update key {key_name} ({action})")
+        flash(request, f"Dynamic-update key {key_name} added")
+    except PdnsError as e:
+        flash(request, str(e), "error")
+    return RedirectResponse(f"/zones/{zone.rstrip('.')}/edit", status_code=303)
+
+
+@router.post("/zones/{zone}/dnsupdate/keys/{keyname}/delete")
+def zone_update_key_delete(request: Request, keyname: str, zone: str = Depends(zone_guard),
+                           user: User = Depends(current_user), db: Session = Depends(get_db)):
+    try:
+        keys = [k for k in pdns.get_zone_update_keys(zone) if canonical(k) != canonical(keyname)]
+        pdns.set_zone_update_keys(zone, keys)
+        # delete the underlying key only if no zone references it (AXFR or update)
+        s = settings()
+        primary = canonical(keyname) in {canonical(n) for n in s.tsig_key_names}
+        if not primary and not pdns.tsig_key_in_use(keyname):
+            pdns.delete_tsig_key(keyname)
+        log_history(db, user.id, "zone", zone, f"Remove dynamic-update key {keyname}")
+        flash(request, f"Dynamic-update key {keyname} removed")
+    except PdnsError as e:
+        flash(request, str(e), "error")
+    return RedirectResponse(f"/zones/{zone.rstrip('.')}/edit", status_code=303)
+
+
+@router.post("/zones/{zone}/dnsupdate/ips")
+def zone_update_ips(request: Request, cidrs: str = Form(""),
+                    zone: str = Depends(zone_guard), user: User = Depends(current_user),
+                    db: Session = Depends(get_db)):
+    try:
+        parsed = parse_update_cidrs(cidrs)
+    except ValueError as bad:
+        flash(request, f"'{bad}' is not a valid IP or CIDR range", "error")
+        return RedirectResponse(f"/zones/{zone.rstrip('.')}/edit", status_code=303)
+    try:
+        pdns.set_zone_update_ips(zone, parsed)
+        log_history(db, user.id, "zone", zone,
+                    f"Set dynamic-update IP allow-list ({len(parsed)} ranges)")
+        if parsed and not pdns.get_zone_update_keys(zone):
+            flash(request, "IP allow-list noted, but updates stay OFF until you add "
+                           "an update key — dynamic updates always require TSIG.", "error")
+        elif parsed:
+            flash(request, "Dynamic-update IP allow-list saved")
+        else:
+            flash(request, "IP allow-list cleared — updates allowed from any source (TSIG still required)")
+    except PdnsError as e:
+        flash(request, str(e), "error")
+    return RedirectResponse(f"/zones/{zone.rstrip('.')}/edit", status_code=303)
+
+
 def _records_partial(request: Request, zone: str, user: User, db: Session | None = None):
     zdata = pdns.get_zone(zone)
     _, records = flatten_rrsets(zdata["rrsets"])
@@ -549,10 +618,18 @@ def zone_edit(request: Request, zone: str = Depends(zone_guard),
             per_zone_keys.append({"name": kid.rstrip("."), "algorithm": k.get("algorithm", "?"),
                                   "secret": k.get("key", "")})
     notify_targets = pdns.get_zone_also_notify(zone) if custom else []
+    # RFC 2136 dynamic-update permissions (independent of custom/catalog mode)
+    update_keys = []
+    for name in pdns.get_zone_update_keys(zone):
+        k = pdns.get_tsig_key(name) or {}
+        update_keys.append({"name": name, "algorithm": k.get("algorithm", "?"),
+                            "secret": k.get("key", "")})
+    update_ips = pdns.get_zone_update_ips(zone)
     return render(request, "zone_edit.html", user=user, zone=zone,
                   zone_display=to_unicode(zone.rstrip(".")), zdata=zdata, soa=soa,
                   custom=custom, per_zone_keys=per_zone_keys, master_host=s.master_host,
-                  notify_targets=notify_targets)
+                  notify_targets=notify_targets, update_keys=update_keys,
+                  update_ips=update_ips)
 
 
 @router.post("/zones/{zone}/soa")
@@ -592,6 +669,9 @@ def zone_delete(request: Request, zone: str = Depends(zone_guard),
     globals_ = {canonical(n) for n in s.tsig_key_names}
     try:
         former_keys = [k for k in pdns.zone_tsig_keys(zone) if canonical(k) not in globals_]
+        former_keys += [k for k in pdns.get_zone_update_keys(zone)
+                        if canonical(k) not in globals_ and canonical(k) not in
+                        {canonical(x) for x in former_keys}]
     except PdnsError:
         former_keys = []
     try:

@@ -241,6 +241,10 @@ label { display: flex; flex-direction: column; gap: 4px;
 .inline-form input { width: 220px; }
 
 .row-actions { white-space: nowrap; display: inline-flex; gap: 4px; align-items: center; }
+.panel-actions {
+  display: flex; flex-wrap: wrap; gap: 6px; white-space: normal;
+  margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--line);
+}
 
 .search { max-width: 260px; }
 

@@ -112,6 +112,81 @@
 </section>
 {% endif %}
 
+<section class="panel">
+  <div class="panel-head"><h1>dynamic updates (RFC 2136)</h1></div>
+  <p class="hint">Let standard tools (<span class="mono">nsupdate</span>,
+    <span class="mono">certbot dns-rfc2136</span>, external-dns…) modify this zone
+    via DNS UPDATE against
+    {% if master_host %}<b class="mono">{{ master_host }}</b>{% else %}the master{% endif %}.
+    Updates must be signed by one of the keys below (and, if an IP allow-list is set,
+    come from one of those ranges). <b>With no keys and no allow-list, all updates are
+    refused.</b> Serials are bumped automatically.</p>
+
+  <table class="data">
+    <thead><tr><th>key name</th><th>algorithm</th><th>secret</th><th class="t-right">actions</th></tr></thead>
+    <tbody>
+      {% for k in update_keys %}
+      <tr>
+        <td class="mono">{{ k.name }}</td>
+        <td class="mono dim">{{ k.algorithm }}</td>
+        <td class="mono rec-data">{{ k.secret }}</td>
+        <td class="t-right">
+          <form method="post" action="/zones/{{ zone|bare }}/dnsupdate/keys/{{ k.name }}/delete" class="inline"
+                onsubmit="return confirm('Remove dynamic-update key {{ k.name }}?')">
+            <button class="btn btn-ghost btn-danger" type="submit">×</button>
+          </form>
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="4" class="empty">no update keys yet — add one below</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <form method="post" action="/zones/{{ zone|bare }}/dnsupdate/keys" class="grid-form">
+    <label>action
+      <select name="action" data-secret-toggle="#upd-key-secret">
+        <option value="generate">generate (panel makes the secret)</option>
+        <option value="import">import (paste a secret)</option>
+      </select>
+    </label>
+    <label class="grow">key name
+      <input name="name" placeholder="e.g. {{ zone|bare }}-update" required>
+    </label>
+    <label>algorithm
+      <select name="algorithm">
+        <option>hmac-sha256</option><option>hmac-sha512</option><option>hmac-sha1</option>
+      </select>
+    </label>
+    <label id="upd-key-secret" class="span2" style="display:none">secret (base64, import only)
+      <input name="secret" placeholder="paste a base64 secret">
+    </label>
+    <button class="btn btn-primary" type="submit">+ add key</button>
+  </form>
+
+  <form method="post" action="/zones/{{ zone|bare }}/dnsupdate/ips" class="grid-form" style="margin-top:1rem">
+    <label class="span2">IP allow-list <span class="dim">(optional — further restricts where signed updates may come from)</span>
+      <input name="cidrs" value="{{ update_ips|join(', ') }}"
+             placeholder="e.g. 198.51.100.0/24, 2001:db8::/48 — leave empty to accept signed updates from any source">
+    </label>
+    <button class="btn span2" type="submit">save IP allow-list ▸</button>
+  </form>
+  <p class="hint">A valid update key is <b>always</b> required; the IP allow-list only narrows
+    which source addresses a correctly-signed update may come from. Empty = any source.</p>
+
+  {% if update_keys %}
+  <p class="hint" style="margin-top:1rem">Example with <span class="mono">nsupdate</span> (key
+    <span class="mono">{{ update_keys[0].name }}</span>):</p>
+  <pre class="code">nsupdate -y '{{ update_keys[0].algorithm }}:{{ update_keys[0].name }}:&lt;secret&gt;' &lt;&lt;EOF
+server {% if master_host %}{{ master_host }}{% else %}&lt;master&gt;{% endif %}
+
+zone {{ zone|bare }}.
+update add host.{{ zone|bare }}. 300 A 198.51.100.10
+send
+EOF</pre>
+  {% endif %}
+</section>
+
 <section class="panel panel-danger">
   <div class="panel-head"><h1>danger zone</h1></div>
   <p class="hint">Deleting the zone removes it from DNS permanently, including all

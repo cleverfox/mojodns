@@ -28,6 +28,11 @@ webserver-address=0.0.0.0
 webserver-port=8081
 webserver-allow-from=0.0.0.0/0,::/0
 
+# RFC 2136 dynamic updates (DNS UPDATE). Enabled globally; per-zone access is
+# gated by the TSIG-ALLOW-DNSUPDATE / ALLOW-DNSUPDATE-FROM metadata the panel
+# sets — a zone with neither rejects all updates.
+dnsupdate=yes
+
 # unprivileged in-container port; docker-compose maps host ${DNS_PORT} here
 local-address=0.0.0.0, ::
 local-port=1053

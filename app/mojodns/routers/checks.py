@@ -6,10 +6,12 @@ panel only ever probes the user's own record targets (anti-SSRF)."""
 import re
 from datetime import datetime, timezone
 
+import dns.resolver
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from ..config import settings
 from ..db import CertObservation, User, ZoneAccess, get_db, log_history
 from ..deps import current_user, zone_guard
 from ..httpcheck import check_http, check_https, check_tcp
@@ -20,17 +22,43 @@ from ..templating import render
 router = APIRouter()
 
 
-def _record_ips(zone: str, host: str) -> set[str]:
-    """A + AAAA contents for `host` in `zone` (the only legal check targets)."""
+def _resolve_ips(name: str) -> list[str]:
+    """Recursively resolve a CNAME target's A + AAAA via the verify resolvers."""
+    r = dns.resolver.Resolver(configure=False)
+    r.nameservers = settings().verify_resolver_list
+    r.timeout, r.lifetime = 3.0, 6.0
+    out: list[str] = []
+    for rtype in ("A", "AAAA"):
+        try:
+            for rr in r.resolve(name.rstrip(".") + ".", rtype):
+                if rr.address not in out:
+                    out.append(rr.address)
+        except Exception:
+            pass
+    return out
+
+
+def _check_targets(zone: str, host: str) -> list[str]:
+    """IPs the panel may probe for `host`: its own A/AAAA, or — for a CNAME —
+    the resolved A/AAAA of the CNAME target (the only legal check targets)."""
     fqdn = canonical(host)
-    ips: set[str] = set()
+    ips: list[str] = []
+    cname: str | None = None
     try:
         zdata = pdns.get_zone(zone)
     except PdnsError:
         return ips
     for rr in zdata["rrsets"]:
-        if rr["name"] == fqdn and rr["type"] in ("A", "AAAA"):
-            ips |= {r["content"] for r in rr["records"]}
+        if rr["name"] != fqdn:
+            continue
+        if rr["type"] in ("A", "AAAA"):
+            for r in rr["records"]:
+                if r["content"] not in ips:
+                    ips.append(r["content"])
+        elif rr["type"] == "CNAME" and rr["records"]:
+            cname = rr["records"][0]["content"]
+    if not ips and cname:
+        ips = _resolve_ips(cname)
     return ips
 
 
@@ -39,13 +67,13 @@ def _slug(*parts: str) -> str:
 
 
 @router.get("/zones/{zone}/checks")
-def check_panel(request: Request, host: str = Query(...), ip: str = Query(...),
+def check_panel(request: Request, host: str = Query(...), ip: str = Query(None),
                 zone: str = Depends(zone_guard), user: User = Depends(current_user)):
-    if ip not in _record_ips(zone, host):
-        raise HTTPException(status_code=404)
+    ips = _check_targets(zone, host)
+    sel = ip if ip in ips else (ips[0] if ips else None)
     return render(request, "partials/check_panel.html", user=user, zone=zone,
-                  host=host, hostdisp=to_unicode(host.rstrip(".")), ip=ip,
-                  slug=_slug(host, ip))
+                  host=host, hostdisp=to_unicode(host.rstrip(".")), ips=ips,
+                  sel=sel, slug=_slug(host))
 
 
 @router.get("/zones/{zone}/check")
@@ -53,7 +81,7 @@ def run_check(request: Request, kind: str = Query(...), host: str = Query(...),
               ip: str = Query(...), port: int = Query(443, ge=1, le=65535),
               zone: str = Depends(zone_guard), user: User = Depends(current_user),
               db: Session = Depends(get_db)):
-    if ip not in _record_ips(zone, host):
+    if ip not in _check_targets(zone, host):
         raise HTTPException(status_code=404)
 
     if kind == "tcp":

@@ -3,6 +3,7 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from ..config import settings
 from ..db import ApiToken, User, get_db, log_history
 from ..deps import current_user
 from ..security import hash_password, needs_rehash, verify_password
@@ -56,4 +57,5 @@ def howto(request: Request, user: User = Depends(current_user),
           db: Session = Depends(get_db)):
     tokens = db.execute(select(ApiToken).where(ApiToken.user_id == user.id)).scalars().all()
     base = str(request.base_url).rstrip("/")
-    return render(request, "howto.html", user=user, tokens=tokens, base=base)
+    return render(request, "howto.html", user=user, tokens=tokens, base=base,
+                  master_host=settings().master_host)
