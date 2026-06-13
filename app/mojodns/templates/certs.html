@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}certificates · mojodns{% endblock %}
+{% block content %}
+
+<section class="panel">
+  <div class="panel-head">
+    <h1>certificates <span class="count">{{ rows|length }}</span></h1>
+    <input class="search" type="search" placeholder="filter…" data-filter="#certs-table">
+  </div>
+  <p class="hint">TLS certificates seen during HTTPS checks, soonest expiry first.
+    Run a <b>check HTTPS</b> on an A/AAAA record to add or refresh an entry.</p>
+
+  <table class="data" id="certs-table">
+    <thead><tr><th>host</th><th>address</th><th>expires</th><th>issuer</th><th>flags</th><th>zone</th><th>checked</th></tr></thead>
+    <tbody>
+      {% for c in rows %}
+      <tr>
+        <td class="mono">{{ c.host|bare }}</td>
+        <td class="mono dim">{{ c.ip }}</td>
+        {% if c.not_after %}
+          {% set days = c.days_left %}
+          {% set cls = 'st-down' if (days is not none and days < 14) else ('st-stale' if (days is not none and days < 30) else 'st-ok') %}
+          <td class="mono"><span class="status-dot {{ cls }}"></span> {{ c.not_after.strftime('%Y-%m-%d') }}{% if days is not none %} <span class="dim">({{ days }}d)</span>{% endif %}</td>
+        {% else %}
+          <td class="mono dim"><span class="status-dot st-error"></span> {{ c.error or '—' }}</td>
+        {% endif %}
+        <td class="mono dim">{{ c.issuer or '—' }}</td>
+        <td>
+          {% if c.self_signed %}<span class="badge badge-custom">self-signed</span>{% endif %}
+          {% if c.hostname_match is false %}<span class="badge badge-admin">name?</span>{% endif %}
+          {% if c.trusted is false and not c.self_signed %}<span class="badge badge-admin">untrusted</span>{% endif %}
+          {% if c.trusted %}<span class="badge badge-ok">trusted</span>{% endif %}
+        </td>
+        <td><a class="zone-link" href="/zones/{{ c.zone|bare }}">{{ c.zone|bare|unicode_name }}</a></td>
+        <td class="dim">{{ c.checked_at.strftime('%d.%m.%Y %H:%M') }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="7" class="empty">no certificates checked yet</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+
+{% endblock %}

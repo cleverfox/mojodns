@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import BigInteger, DateTime, ForeignKey, String, Text, create_engine, func
+from sqlalchemy import BigInteger, DateTime, ForeignKey, String, Text, UniqueConstraint, create_engine, func
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
 
 from .config import settings
@@ -60,6 +60,28 @@ class ZoneCheck(Base):
     status: Mapped[str] = mapped_column(String(16))
     resolved_ns: Mapped[str | None] = mapped_column(Text)  # space separated
     detail: Mapped[str | None] = mapped_column(String(255))
+    checked_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class CertObservation(Base):
+    """Last TLS certificate seen for a record's host:ip during an HTTPS check."""
+
+    __tablename__ = "cert_observations"
+    __table_args__ = (UniqueConstraint("host", "ip", "port", name="uq_cert_host_ip_port"),)
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    zone: Mapped[str] = mapped_column(String(255))
+    host: Mapped[str] = mapped_column(String(255))
+    ip: Mapped[str] = mapped_column(String(64))
+    port: Mapped[int] = mapped_column(default=443)
+    subject: Mapped[str | None] = mapped_column(String(255))
+    issuer: Mapped[str | None] = mapped_column(String(255))
+    not_after: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    days_left: Mapped[int | None] = mapped_column(default=None)
+    hostname_match: Mapped[bool | None] = mapped_column(default=None)
+    self_signed: Mapped[bool | None] = mapped_column(default=None)
+    trusted: Mapped[bool | None] = mapped_column(default=None)
+    error: Mapped[str | None] = mapped_column(String(255))
     checked_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 

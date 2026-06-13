@@ -13,8 +13,8 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from .config import settings
 from .db import Base, SessionLocal, User, engine
-from .pdns import canonical, pdns
-from .routers import api, auth, ddns, pdns_compat, users, zones
+from .pdns import canonical, is_custom_zone, pdns
+from .routers import api, auth, checks, ddns, pdns_compat, users, zones
 from .security import hash_password
 from .verify import check_zones, store_results, summarize
 
@@ -40,10 +40,17 @@ def bootstrap() -> None:
             pdns.ensure_catalog_zone()
             log.info("Catalog zone %s present", settings().catalog_zone)
             if settings().tsig_key_names:
+                cat = settings().catalog_zone
+                n = 0
                 for z in pdns.list_zones():
+                    # leave custom zones alone — they carry their own per-zone
+                    # keys that the global stamp would otherwise clobber
+                    if is_custom_zone(z, cat):
+                        continue
                     pdns.ensure_tsig_allow_axfr(z["name"])
-                log.info("TSIG-ALLOW-AXFR keys %s ensured on all zones",
-                         ",".join(settings().tsig_key_names))
+                    n += 1
+                log.info("TSIG-ALLOW-AXFR keys %s ensured on %d catalog/producer zones",
+                         ",".join(settings().tsig_key_names), n)
             return
         except Exception as e:  # pdns may still be starting
             log.info("Waiting for PowerDNS API (%s)", e)
@@ -98,3 +105,4 @@ app.include_router(users.router)
 app.include_router(api.router)
 app.include_router(pdns_compat.router)
 app.include_router(ddns.router)
+app.include_router(checks.router)

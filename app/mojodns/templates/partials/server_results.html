@@ -1,0 +1,39 @@
+{% if error %}
+<div class="flash flash-error">{{ error }}</div>
+{% else %}
+
+{% if delegation %}
+<div class="subhead">parent delegation</div>
+{% if delegation.status == 'mismatch' %}
+<div class="flash flash-error">Delegation mismatch — the parent zone
+  <b>{{ delegation.parent }}</b> hands out different nameservers than this zone publishes.
+  {% if delegation.only_parent %}<br>Only at parent: <span class="mono">{{ delegation.only_parent|map('bare')|join(', ') }}</span>{% endif %}
+  {% if delegation.only_zone %}<br>Only in zone: <span class="mono">{{ delegation.only_zone|map('bare')|join(', ') }}</span>{% endif %}
+</div>
+{% elif delegation.status == 'ok' %}
+<div class="flash flash-ok">Parent <b>{{ delegation.parent }}</b> delegates to the same
+  nameservers this zone publishes ({{ delegation.zone_ns|map('bare')|join(', ') }}).</div>
+{% else %}
+<div class="hint">Delegation not checked — {{ delegation.detail }}.</div>
+{% endif %}
+{% endif %}
+
+<div class="subhead">published nameservers vs current serial <b class="mono">{{ master_serial }}</b></div>
+<table class="data">
+  <thead><tr><th>nameserver</th><th>address</th><th>serial</th><th>status</th></tr></thead>
+  <tbody>
+    {% for r in rows %}
+    <tr>
+      <td class="mono">{{ r.ns|bare }}</td>
+      <td class="mono dim">{{ r.addr or '—' }}</td>
+      <td class="mono">{{ r.serial if r.serial is not none else '—' }}</td>
+      <td>
+        <span class="status-dot st-{{ r.status }}"></span> {{ r.status }}{% if r.detail %} <span class="dim">({{ r.detail }})</span>{% endif %}
+      </td>
+    </tr>
+    {% else %}
+    <tr><td colspan="4" class="empty">zone has no NS records</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endif %}

@@ -40,6 +40,10 @@ class Settings(BaseSettings):
     # where the panel sends its own AXFR requests (the pdns DNS listener)
     pdns_axfr_host: str = "pdns"
     pdns_axfr_port: int = 1053
+
+    # public address secondaries use to reach this master — shown only in the
+    # custom-DNS UI hint (e.g. "195.3.255.70"); cosmetic, no functional effect
+    master_host: str = ""
     default_soa_ns: str = "ns1.example.net."
     default_soa_mail: str = "hostmaster.example.net."
     default_nameservers: str = "ns1.example.net.,ns2.example.net."
@@ -50,6 +54,9 @@ class Settings(BaseSettings):
     # the background re-check runs (0 disables the periodic check)
     verify_resolvers: str = "1.1.1.1,8.8.8.8"
     verify_interval_hours: float = 24.0
+
+    # timeout (seconds) for per-record TCP/HTTP/HTTPS reachability checks
+    check_timeout: float = 6.0
 
     @property
     def verify_resolver_list(self) -> list[str]:

@@ -49,6 +49,27 @@ CREATE TABLE zone_checks (
   checked_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- last TLS certificate seen for a record's host:ip during an HTTPS check
+CREATE TABLE cert_observations (
+  id             BIGSERIAL PRIMARY KEY,
+  zone           VARCHAR(255) NOT NULL,
+  host           VARCHAR(255) NOT NULL,
+  ip             VARCHAR(64)  NOT NULL,
+  port           INTEGER NOT NULL DEFAULT 443,
+  subject        VARCHAR(255),
+  issuer         VARCHAR(255),
+  not_after      TIMESTAMPTZ,
+  days_left      INTEGER,
+  hostname_match BOOLEAN,
+  self_signed    BOOLEAN,
+  trusted        BOOLEAN,
+  error          VARCHAR(255),
+  checked_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT uq_cert_host_ip_port UNIQUE (host, ip, port)
+);
+CREATE INDEX cert_obs_zone_idx ON cert_observations(zone);
+CREATE INDEX cert_obs_expiry_idx ON cert_observations(not_after);
+
 CREATE TABLE api_tokens (
   id         BIGSERIAL PRIMARY KEY,
   user_id    BIGINT NOT NULL REFERENCES app_users(id) ON DELETE CASCADE,

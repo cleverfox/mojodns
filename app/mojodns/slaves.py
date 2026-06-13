@@ -1,11 +1,15 @@
-"""On-demand secondary (slave) monitoring for a zone.
+"""On-demand DNS-server monitoring for a zone.
 
 Polls each published apex NS for the zone's SOA and compares the serial
-against the master's. Status per nameserver address:
+against the zone's current serial. Status per nameserver address:
 
-    ok     responds, serial >= master  (in sync)
-    stale  responds, serial <  master  (lagging behind)
+    ok     responds, serial >= current  (in sync)
+    stale  responds, serial <  current  (lagging behind)
     down   no answer / refused / not serving this zone
+
+It also checks the *delegation*: the NS records the parent zone hands out
+vs the NS the zone itself publishes. A mismatch (e.g. the registrar still
+lists an old nameserver) is a common, hard-to-spot misconfiguration.
 
 Queries are over IPv4 — the panel has no IPv6 egress on the docker network,
 so AAAA-only nameservers are reported as not pollable rather than down.
@@ -110,3 +114,71 @@ def summarize(rows: list[dict]) -> str:
     for r in rows:
         c[r["status"]] = c.get(r["status"], 0) + 1
     return ", ".join(f"{c[s]} {s}" for s in ("ok", "stale", "down") if s in c) or "no nameservers"
+
+
+def _parent_zone(zone: str) -> str | None:
+    labels = canonical(zone).rstrip(".").split(".")
+    if len(labels) < 2:
+        return None
+    return canonical(".".join(labels[1:]))
+
+
+def _ns_at_server(ip: str, zone: str) -> set[str]:
+    """Ask one server (no recursion) for the zone's NS; return the NS names it
+    gives — from the answer (authoritative) or authority (referral) section."""
+    q = dns.message.make_query(canonical(zone), dns.rdatatype.NS)
+    q.flags &= ~dns.flags.RD
+    ns: set[str] = set()
+    for proto in (dns.query.udp, dns.query.tcp):
+        try:
+            resp = proto(q, ip, timeout=4.0)
+        except Exception:
+            continue
+        for rrset in list(resp.answer) + list(resp.authority):
+            if rrset.rdtype == dns.rdatatype.NS:
+                ns |= {canonical(str(r.target)) for r in rrset}
+        return ns
+    return ns
+
+
+def check_delegation(zone: str, zone_ns: list[str]) -> dict:
+    """Compare the parent zone's delegation NS with the zone's own apex NS.
+
+    Returns status: ok | mismatch | unknown (parent not public / not found)."""
+    zone = canonical(zone)
+    zset = {canonical(n) for n in zone_ns}
+    out = {"status": "unknown", "parent": None, "parent_ns": [],
+           "zone_ns": sorted(zset), "only_parent": [], "only_zone": [], "detail": ""}
+
+    parent = _parent_zone(zone)
+    if not parent:
+        out["detail"] = "zone has no parent"
+        return out
+    out["parent"] = parent.rstrip(".")
+
+    res = _resolver()
+    try:
+        parent_ns = [str(r.target) for r in res.resolve(parent, "NS")]
+    except Exception:
+        out["detail"] = f"parent zone '{parent.rstrip('.')}' is not publicly resolvable"
+        return out
+
+    delegated: set[str] | None = None
+    for name in parent_ns:
+        for ip in _a_records(name):
+            found = _ns_at_server(ip, zone)
+            if found:
+                delegated = found
+                break
+        if delegated is not None:
+            break
+
+    if not delegated:
+        out["detail"] = f"no delegation for this zone found in parent '{parent.rstrip('.')}'"
+        return out
+
+    out["parent_ns"] = sorted(delegated)
+    out["only_parent"] = sorted(delegated - zset)   # delegated but not published by us
+    out["only_zone"] = sorted(zset - delegated)     # we publish but parent doesn't delegate
+    out["status"] = "ok" if delegated == zset else "mismatch"
+    return out

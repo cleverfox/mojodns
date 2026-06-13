@@ -169,6 +169,12 @@ table.kv td { padding: 6px 18px 6px 0; }
 .badge { font-family: var(--mono); font-size: 11px; padding: 2px 8px; border: 1px solid; }
 .badge-admin { color: var(--amber); border-color: rgba(255,180,84,.5); }
 .badge-owner, .badge-ok { color: var(--ok); border-color: rgba(126,224,138,.4); }
+.badge-custom { color: #8fc7ff; border-color: rgba(143,199,255,.4); }
+
+/* inline checkbox label (don't stack like the column-flex labels) */
+label.check { flex-direction: row; align-items: center; gap: 8px;
+  text-transform: none; letter-spacing: 0; color: var(--dim); }
+label.check input { width: auto; }
 
 .ziplist { list-style: none; margin: 0; padding: 0; }
 .ziplist li { padding: 5px 0; border-bottom: 1px solid var(--line-soft); }
@@ -299,6 +305,17 @@ pre.zone-dump { max-height: 70vh; overflow: auto; font-size: 12px; }
 
 .htmx-indicator { display: none; }
 .htmx-request .htmx-indicator, .htmx-request.htmx-indicator { display: inline; }
+
+/* ---------- per-record checks ---------- */
+tr.check-panel > td { background: var(--bg-raise); padding: 12px 14px; }
+.check-head { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.check-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-left: auto; }
+.check-port { flex-direction: row; align-items: center; gap: 6px; }
+.check-port input { width: 80px; }
+.check-result { margin-top: 10px; }
+.check-line { font-size: 13.5px; margin: 6px 0; }
+.cert-box { margin-top: 8px; }
+.cert-box .kv th { width: 12%; }
 .t-status { width: 26px; text-align: center; }
 
 .ns-match { color: var(--ok); }
@@ -318,6 +335,20 @@ pre.zone-dump { max-height: 70vh; overflow: auto; font-size: 12px; }
 .flash-error { color: var(--danger); border-color: rgba(255, 107, 94, 0.45);
   background: rgba(255, 107, 94, 0.07); }
 .flash-error::before { content: "✗ "; }
+.flash-warn { color: var(--amber); border-color: rgba(255, 180, 84, 0.4);
+  background: rgba(255, 180, 84, 0.06); }
+.flash-warn::before { content: "▲ "; }
+
+/* ---------- SPF constructor ---------- */
+.spf-builder { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
+.spf-row { display: flex; gap: 8px; align-items: center; }
+.spf-row .spf-q { width: 110px; flex: none; }
+.spf-row .spf-k { width: 120px; flex: none; }
+.spf-row .spf-v { flex: 1 1 auto; }
+.spf-row .btn { padding: 6px 10px; }
+.spf-msgs { margin: 8px 0; }
+.spf-preview-wrap { margin-top: 14px; }
+.spf-preview-wrap .code { margin-top: 6px; white-space: pre-wrap; word-break: break-all; }
 
 /* ---------- login ---------- */
 

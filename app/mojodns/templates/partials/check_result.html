@@ -1,0 +1,36 @@
+{% set st = {'ok':'ok','tls-only':'partial','refused':'down','timeout':'down','error':'error'}.get(result.status, 'error') %}
+<div class="check-line">
+  <span class="status-dot st-{{ st }}"></span>
+  <b>{{ result.kind|upper }}</b>
+  {% if result.kind == 'tcp' %}
+    <span class="mono">{{ result.ip }}:{{ result.port }}</span> — {{ result.status }}
+    {% if result.detail %}<span class="dim">({{ result.detail }})</span>{% endif %}
+  {% else %}
+    <span class="mono">{{ result.ip }}</span> <span class="dim">Host: {{ host|bare }}</span> —
+    {% if result.http_status %}HTTP <b>{{ result.http_status }}</b>{% if result.server %} · {{ result.server }}{% endif %}
+      {% if result.location %}<br><span class="dim">→ {{ result.location }}</span>{% endif %}
+    {% else %}{{ result.status }}{% if result.detail %} <span class="dim">({{ result.detail }})</span>{% endif %}{% endif %}
+  {% endif %}
+  {% if result.latency_ms is defined and result.latency_ms is not none %}<span class="dim"> · {{ result.latency_ms }} ms</span>{% endif %}
+</div>
+
+{% if result.kind == 'https' and result.cert is mapping and result.cert.not_after is defined %}
+{% set c = result.cert %}
+<div class="cert-box">
+  {% if c.expired %}<div class="flash flash-error">Certificate EXPIRED on {{ c.not_after.strftime('%Y-%m-%d') }}</div>
+  {% elif c.days_left is not none and c.days_left < 14 %}<div class="flash flash-error">Certificate expires in {{ c.days_left }} days ({{ c.not_after.strftime('%Y-%m-%d') }})</div>
+  {% elif c.days_left is not none and c.days_left < 30 %}<div class="flash flash-warn">Certificate expires in {{ c.days_left }} days ({{ c.not_after.strftime('%Y-%m-%d') }})</div>
+  {% endif %}
+  {% if not c.hostname_match %}<div class="flash flash-warn">Certificate does not cover {{ host|bare }}</div>{% endif %}
+  {% if c.self_signed %}<div class="flash flash-warn">Self-signed certificate</div>
+  {% elif c.trusted is defined and not c.trusted %}<div class="flash flash-warn">Not trusted by a public CA{% if c.trust_error %} ({{ c.trust_error }}){% endif %}</div>{% endif %}
+  <table class="kv">
+    <tr><th>subject</th><td class="mono">{{ c.subject }}</td><th>issuer</th><td class="mono">{{ c.issuer }}</td></tr>
+    <tr><th>valid</th><td class="mono">{{ c.not_before.strftime('%Y-%m-%d') }} → {{ c.not_after.strftime('%Y-%m-%d') }}
+        ({{ c.days_left }}d){% if c.not_yet_valid %} <b>not yet valid</b>{% endif %}</td>
+        <th>SANs</th><td class="mono">{{ c.sans|join(', ') if c.sans else '—' }}</td></tr>
+  </table>
+</div>
+{% elif result.kind == 'https' and result.cert is mapping and result.cert.error %}
+<div class="flash flash-warn">Certificate could not be parsed: {{ result.cert.error }}</div>
+{% endif %}

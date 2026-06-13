@@ -45,6 +45,8 @@
         <label class="span2">NS records (comma separated)
           <input name="nameservers" value="{{ defaults.default_nameservers }}">
         </label>
+        <label class="span2 check"><input type="checkbox" name="custom" value="true">
+          custom DNS — keep off the auto-fleet catalog; configure secondaries manually with a per-zone key</label>
         <button class="btn btn-primary span2" type="submit">create zone ▸</button>
       </form>
     </details>
@@ -62,7 +64,7 @@
           <span class="status-dot st-{{ st }}"
                 title="{{ st }}{% if z.check %} · resolved NS: {{ z.check.resolved_ns or z.check.detail or '—' }} · checked {{ z.check.checked_at.strftime('%d.%m.%Y %H:%M') }}{% else %} · not verified yet{% endif %}"></span>
         </td>
-        <td><a class="zone-link" href="/zones/{{ z.name|bare }}">{{ z.display }}</a></td>
+        <td><a class="zone-link" href="/zones/{{ z.name|bare }}">{{ z.display }}</a>{% if z.custom %} <span class="badge badge-custom">custom</span>{% endif %}</td>
         <td class="mono dim">{{ z.serial or '—' }}</td>
         <td>{{ z.owner }}</td>
         <td class="dim">{{ z.editors|join(', ') if z.editors else '—' }}</td>

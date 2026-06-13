@@ -5,6 +5,15 @@
   <td class="mono rec-data {{ 'ns-' + rec.ns_mark if rec.ns_mark is defined else '' }}">{{ rec.data }}{% if rec.ns_mark is defined %} {{ '✓' if rec.ns_mark == 'match' else '✗' }}{% endif %}</td>
   <td class="mono dim">{{ rec.ttl }}</td>
   <td class="t-right row-actions">
+    {% if rec.type in ('A', 'AAAA') %}
+    <button class="btn btn-ghost" title="check TCP / HTTP / HTTPS to this IP"
+            hx-get="/zones/{{ zone|bare }}/checks?host={{ rec.name|urlencode }}&ip={{ rec.data|urlencode }}"
+            hx-target="closest tr" hx-swap="afterend">check</button>
+    {% endif %}
+    {% if rec.type == 'TXT' and 'v=spf1' in rec.data|lower %}
+    <a class="btn btn-ghost" title="open the SPF constructor"
+       href="/zones/{{ zone|bare }}/spf?name={{ rec.name|urlencode }}&content={{ rec.content|urlencode }}">spf</a>
+    {% endif %}
     <button class="btn btn-ghost"
             hx-get="/zones/{{ zone|bare }}/records/edit?name={{ rec.name|urlencode }}&rtype={{ rec.type|urlencode }}&content={{ rec.content|urlencode }}"
             hx-target="closest tr" hx-swap="outerHTML">edit</button>

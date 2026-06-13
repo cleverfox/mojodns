@@ -20,6 +20,7 @@
   </a>
   <nav class="topbar-nav">
     <a href="/zones">zones</a>
+    <a href="/certs">certs</a>
     {% if user.is_admin %}<a href="/users">users</a>{% endif %}
     <a href="/howto">how to use</a>
     <span class="topbar-user">
@@ -60,6 +61,12 @@
     if (!sel) return;
     var prio = document.querySelector(sel);
     if (prio) prio.style.display = (e.target.value === 'MX' || e.target.value === 'SRV') ? '' : 'none';
+    // show secret input only when importing a key: <select data-secret-toggle="#wrap-id">
+    var ssel = e.target.getAttribute && e.target.getAttribute('data-secret-toggle');
+    if (ssel) {
+      var box = document.querySelector(ssel);
+      if (box) box.style.display = (e.target.value === 'import') ? '' : 'none';
+    }
   });
 </script>
 {% block scripts %}{% endblock %}

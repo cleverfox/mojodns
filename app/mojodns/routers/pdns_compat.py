@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session
 from ..db import ApiToken, User, get_db, log_history
 from ..deps import can_access_zone, user_zones
 from ..pdns import PdnsError, canonical, pdns
+from ..notifier import notify_zone
 
 router = APIRouter(prefix="/api/v1/servers/{server_id}")
 
@@ -113,7 +114,7 @@ def zone_notify(server_id: str, zone_id: str, user: User = Depends(header_token_
                 db: Session = Depends(get_db)):
     czone = _guard(db, user, zone_id)
     try:
-        pdns.notify(czone)
+        notify_zone(czone)
     except PdnsError as e:
         raise HTTPException(status_code=e.status, detail={"error": str(e)})
     return {"result": "Notification queued"}

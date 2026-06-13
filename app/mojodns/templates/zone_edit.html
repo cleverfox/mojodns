@@ -20,6 +20,98 @@
   </form>
 </section>
 
+<section class="panel">
+  <div class="panel-head"><h1>DNS mode</h1></div>
+  {% if custom %}
+  <p class="hint">Currently <b>custom DNS</b>: this zone is not in the catalog, so the
+    auto-configured NSD fleet ignores it — you manage its secondaries by hand with
+    the per-zone transfer keys below. Switching back to <b>catalog</b> re-adds
+    it to the auto-fleet, restores the global transfer keys, and removes this zone's
+    per-zone keys.</p>
+  <form method="post" action="/zones/{{ zone|bare }}/mode"
+        onsubmit="return confirm('Move {{ zone_display }} back onto the catalog auto-fleet?')">
+    <input type="hidden" name="mode" value="catalog">
+    <button class="btn" type="submit">switch to catalog (auto-fleet) ▸</button>
+  </form>
+  {% else %}
+  <p class="hint">Currently <b>catalog</b>: served by the auto-configured NSD fleet via the
+    catalog zone. Switching to <b>custom DNS</b> removes it from the catalog (the fleet will
+    drop it) so you can point hand-picked secondaries at it using a per-zone transfer key.</p>
+  <form method="post" action="/zones/{{ zone|bare }}/mode"
+        onsubmit="return confirm('Remove {{ zone_display }} from the catalog and switch to custom DNS?')">
+    <input type="hidden" name="mode" value="custom">
+    <button class="btn" type="submit">switch to custom DNS ▸</button>
+  </form>
+  {% endif %}
+</section>
+
+{% if custom %}
+<section class="panel">
+  <div class="panel-head"><h1>custom DNS — transfer keys</h1></div>
+  <p class="hint">Configure your chosen secondaries to AXFR from
+    {% if master_host %}<b class="mono">{{ master_host }}</b>{% else %}the master{% endif %}
+    using one of the keys below.</p>
+
+  <table class="data">
+    <thead><tr><th>key name</th><th>algorithm</th><th>secret</th><th class="t-right">actions</th></tr></thead>
+    <tbody>
+      {% for k in per_zone_keys %}
+      <tr>
+        <td class="mono">{{ k.name }}</td>
+        <td class="mono dim">{{ k.algorithm }}</td>
+        <td class="mono rec-data">{{ k.secret }}</td>
+        <td class="t-right">
+          <form method="post" action="/zones/{{ zone|bare }}/keys/{{ k.name }}/delete" class="inline"
+                onsubmit="return confirm('Remove transfer key {{ k.name }}?')">
+            <button class="btn btn-ghost btn-danger" type="submit">×</button>
+          </form>
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="4" class="empty">no transfer keys yet — add one below</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <form method="post" action="/zones/{{ zone|bare }}/keys" class="grid-form">
+    <label>action
+      <select name="action" data-secret-toggle="#key-secret">
+        <option value="generate">generate (panel makes the secret)</option>
+        <option value="import">import (paste a secret)</option>
+      </select>
+    </label>
+    <label class="grow">key name
+      <input name="name" placeholder="e.g. {{ zone|bare }} or a provider-supplied name" required>
+    </label>
+    <label>algorithm
+      <select name="algorithm">
+        <option>hmac-sha256</option><option>hmac-sha512</option><option>hmac-sha1</option>
+      </select>
+    </label>
+    <label id="key-secret" class="span2" style="display:none">secret (base64, import only)
+      <input name="secret" placeholder="paste the provider's base64 secret">
+    </label>
+    <button class="btn btn-primary" type="submit">+ add key</button>
+  </form>
+</section>
+
+<section class="panel">
+  <div class="panel-head"><h1>custom DNS — notify targets</h1></div>
+  <p class="hint">Servers to send DNS NOTIFY to when this zone changes — IPs or
+    hostnames, optionally <span class="mono">:port</span>, comma/space separated.
+    Hostnames are resolved at notify time. <b>Leave empty</b> for the default
+    behaviour (PowerDNS notifies the global list + the zone's NS records); when
+    set, NOTIFY is sent to <b>only these servers</b>.</p>
+  <form method="post" action="/zones/{{ zone|bare }}/notify-targets" class="grid-form">
+    <label class="span2">notify targets
+      <input name="targets" value="{{ notify_targets|join(', ') }}"
+             placeholder="e.g. ns.example.com, 198.51.100.4:5353">
+    </label>
+    <button class="btn btn-primary span2" type="submit">save notify targets ▸</button>
+  </form>
+</section>
+{% endif %}
+
 <section class="panel panel-danger">
   <div class="panel-head"><h1>danger zone</h1></div>
   <p class="hint">Deleting the zone removes it from DNS permanently, including all

@@ -115,6 +115,37 @@ a harmless pdns/NSD NOTIFY-ack interop quirk — the transfer still happens.
    record content, adding trailing dots, quoting TXT), and copies per-zone
    access grants and the history log.
 
+## Custom DNS mode (per-zone, manual secondaries)
+
+By default every zone joins the catalog and is served by the auto-configured
+NSD fleet. A zone can instead be put in **custom DNS** mode (checkbox on
+create, or the *DNS mode* toggle in zone settings): it leaves the catalog —
+so the auto-fleet ignores it — and you point hand-picked secondaries at it
+using **per-zone TSIG keys** managed on the zone page (generate one or import
+a provider-supplied name+secret). The master's primary key stays allowed so
+the panel can still view/export the zone; the per-zone keys are isolated —
+the global extra keys cannot transfer a custom zone. Set `MASTER_HOST` so the
+zone page shows the address secondaries should transfer from.
+
+A custom zone can also have a **notify-targets** list (zone settings) — IPs or
+hostnames, optionally `:port` (hostnames are resolved to IPv4 at notify time).
+Empty keeps the default (PowerDNS notifies the global list + the zone's NS),
+while a non-empty list makes the panel send DNS NOTIFY to **exactly those servers**
+and nobody else (the zone is switched to `Native` so PowerDNS itself sends no
+NOTIFY). Useful when a zone's secondaries differ from the auto-fleet.
+
+## SPF builder
+
+TXT `v=spf1` records have a dedicated decoder/constructor (the **SPF builder**
+link on the zone page, or the **spf** button on any `v=spf1` TXT row). It
+decodes the record into editable terms (qualifier + mechanism + value),
+flags parse errors and RFC-7208 warnings (bad IP, unknown mechanism, >10
+DNS lookups, mechanisms after `all`, …), and offers a live constructor —
+add/remove/reorder terms with an instant preview. The server
+(`mojodns/spf.py`) re-validates on save and rejects invalid records. The
+parser/builder is self-contained so similar policy records (DMARC, …) can
+follow the same pattern.
+
 ## Zone NS verification
 
 The panel compares each zone's configured NS records with the live
@@ -124,6 +155,23 @@ to another provider or abandoned (NXDOMAIN), grey = could not check.
 Trigger it with **verify zones ✓** on the dashboard (status dot per zone)
 or **verify NS ✓** on a zone page (each NS record marked ✓/✗). A background
 re-check runs every `VERIFY_INTERVAL_HOURS` (default 24, 0 disables).
+
+**Per-record checks**: each A/AAAA record has a **check** button opening a
+panel with **check TCP** (raw connect to the IP on a chosen port, default
+443), **check HTTP** (GET to the IP on :80 with `Host: <record>`), and
+**check HTTPS** (TLS to :443 with SNI = the record name, capturing the cert
+**even if invalid** and doing the HTTP request anyway). HTTPS analyzes the
+certificate — expiry + days left, issuer, SANs, hostname match,
+self-signed/expired/untrusted — and the observation is stored; the **certs**
+page lists all seen certificates sorted by expiry (red <14d, amber <30d).
+Checks only target the IPs of real records in zones you can access. (Needs
+IPv6 egress on the panel for AAAA targets — enabled on the compose network.)
+
+**check DNS servers ⟲** on a zone page goes further: it (a) checks the
+*parent delegation* — querying the parent zone directly for the NS it hands
+out and flagging any mismatch with the NS this zone publishes (a common
+registrar-stale-glue problem) — and (b) polls each published nameserver's
+SOA serial (green = in sync, yellow = stale, red = not answering).
 
 **view zone ≡** on a zone page performs a live TSIG-signed AXFR against
 pdns (`PDNS_AXFR_HOST:PDNS_AXFR_PORT`) and shows the zone-file text exactly

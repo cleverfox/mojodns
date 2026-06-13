@@ -1,0 +1,19 @@
+<tr class="check-panel">
+  <td colspan="6">
+    <div class="check-head">
+      <span class="subhead">checks · <span class="mono">{{ hostdisp }}</span> → <span class="mono">{{ ip }}</span></span>
+      <span class="check-controls">
+        <label class="check-port">port <input name="port" type="number" value="443" min="1" max="65535"></label>
+        <button class="btn btn-ghost" hx-get="/zones/{{ zone|bare }}/check?kind=tcp&host={{ host|urlencode }}&ip={{ ip|urlencode }}"
+                hx-include="closest .check-panel" hx-target="#{{ slug }}" hx-indicator="#{{ slug }}-spin">check TCP</button>
+        <button class="btn btn-ghost" hx-get="/zones/{{ zone|bare }}/check?kind=http&host={{ host|urlencode }}&ip={{ ip|urlencode }}"
+                hx-target="#{{ slug }}" hx-indicator="#{{ slug }}-spin">check HTTP</button>
+        <button class="btn btn-ghost" hx-get="/zones/{{ zone|bare }}/check?kind=https&host={{ host|urlencode }}&ip={{ ip|urlencode }}"
+                hx-target="#{{ slug }}" hx-indicator="#{{ slug }}-spin">check HTTPS</button>
+        <span id="{{ slug }}-spin" class="htmx-indicator dim">checking…</span>
+        <button type="button" class="btn btn-ghost" title="close" onclick="this.closest('tr').remove()">×</button>
+      </span>
+    </div>
+    <div id="{{ slug }}" class="check-result"></div>
+  </td>
+</tr>

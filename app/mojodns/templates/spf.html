@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}SPF · {{ host }} · {{ zone_display }} · mojodns{% endblock %}
+{% block content %}
+
+<div class="crumbs"><a href="/zones">zones</a> <span>/</span>
+  <a href="/zones/{{ zone|bare }}">{{ zone_display }}</a> <span>/</span> <strong>SPF · {{ host }}</strong></div>
+
+<section class="panel">
+  <div class="panel-head">
+    <h1>SPF record <span class="dim mono">{{ host }}</span></h1>
+  </div>
+
+  {% if parsed.errors %}
+  <div class="spf-msgs">
+    {% for e in parsed.errors %}<div class="flash flash-error">{{ e }}</div>{% endfor %}
+  </div>
+  {% endif %}
+  {% if parsed.warnings %}
+  <div class="spf-msgs">
+    {% for w in parsed.warnings %}<div class="flash flash-warn">{{ w }}</div>{% endfor %}
+  </div>
+  {% endif %}
+
+  <form method="post" action="/zones/{{ zone|bare }}/spf/save" id="spf-form">
+    <input type="hidden" name="name" value="{{ rname }}">
+    <input type="hidden" name="orig_content" value="{{ orig_content }}">
+
+    <!-- JS builds editable rows here; falls back to the raw field below -->
+    <div id="spf-builder" class="spf-builder"></div>
+    <div id="spf-builder-controls" style="display:none">
+      <button type="button" class="btn" id="spf-add">+ add term</button>
+    </div>
+
+    <label class="span2" style="margin-top:14px">record (editable; the builder keeps this in sync)
+      <input name="content" id="spf-content" class="mono" value="{{ parsed.raw }}" required>
+    </label>
+
+    <div class="spf-preview-wrap">
+      <span class="subhead">preview</span>
+      <pre class="code" id="spf-preview">{{ parsed.raw }}</pre>
+      <div id="spf-live-msgs" class="spf-msgs"></div>
+    </div>
+
+    <div class="row-actions" style="margin-top:12px">
+      <label>ttl <input name="ttl" type="number" value="{{ ttl }}" style="width:110px"></label>
+      <button class="btn btn-primary" type="submit">save SPF ▸</button>
+      <a class="btn btn-ghost" href="/zones/{{ zone|bare }}">cancel</a>
+    </div>
+  </form>
+</section>
+
+<script type="application/json" id="spf-init">{{ parsed.terms|tojson }}</script>
+<script src="/static/js/spf.js" defer></script>
+{% endblock %}

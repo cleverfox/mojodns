@@ -22,6 +22,7 @@ from ..db import ApiToken, User, get_db, log_history
 from ..deps import can_access_zone
 from ..idn import to_ascii
 from ..pdns import PdnsError, canonical, pdns
+from ..notifier import notify_zone
 
 router = APIRouter(prefix="/api/v1/ddns")
 
@@ -100,7 +101,7 @@ def ddns_update(
         if cur == [content] and cur_ttl == ttl:
             return {"status": "ok", "name": fqdn, "type": rtype, "ip": content, "changed": False}
         pdns.replace_rrset(zone, fqdn, rtype, ttl, [{"content": content, "disabled": False}])
-        pdns.notify(zone)
+        notify_zone(zone)
     except PdnsError as e:
         raise HTTPException(status_code=e.status, detail={"error": str(e)})
 
@@ -122,7 +123,7 @@ def ddns_delete(
         if not cur:
             return {"status": "ok", "name": fqdn, "type": rtype, "changed": False}
         pdns.replace_rrset(zone, fqdn, rtype, 300, [])
-        pdns.notify(zone)
+        notify_zone(zone)
     except PdnsError as e:
         raise HTTPException(status_code=e.status, detail={"error": str(e)})
 

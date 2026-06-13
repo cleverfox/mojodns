@@ -9,11 +9,13 @@ from sqlalchemy.orm import Session
 from ..config import settings
 from ..db import HistoryEntry, User, ZoneAccess, ZoneCheck, get_db, log_history
 from ..deps import current_user, require_admin, user_zones, zone_guard
-from ..dnsutil import Soa, build_content, dotted, email_to_rname, flatten_rrsets, split_prio
+from ..dnsutil import Soa, build_content, dotted, email_to_rname, flatten_rrsets, quote_txt, split_prio
+from ..spf import is_spf, parse_spf
 from ..idn import to_ascii, to_unicode
-from ..pdns import PdnsError, canonical, pdns
+from ..pdns import PdnsError, canonical, is_custom_zone, pdns
 from ..axfr import AxfrError, ZoneParseError, axfr_text, parse_zone_text
-from ..slaves import check_slaves, summarize as slave_summary
+from ..slaves import apex_ns, check_delegation, check_slaves, summarize as slave_summary
+from ..notifier import notify_zone, parse_targets
 from ..templating import flash, render
 from ..verify import check_zone, check_zones, load_checks, store_results, summarize
 
@@ -68,6 +70,7 @@ def _zone_rows(db: Session, user: User) -> list[dict]:
                 "owner": owners.get(z["name"], "—"),
                 "editors": editors.get(z["name"], []),
                 "check": checks.get(z["name"]),
+                "custom": is_custom_zone(z, settings().catalog_zone),
             }
         )
     rows.sort(key=lambda r: r["display"])
@@ -95,6 +98,7 @@ def zone_create(
     expire: int = Form(604800),
     minimum: int = Form(3600),
     nameservers: str = Form(""),
+    custom: bool = Form(False),
     user: User = Depends(current_user),
     db: Session = Depends(get_db),
 ):
@@ -120,15 +124,26 @@ def zone_create(
          "records": [{"content": n, "disabled": False} for n in ns_list]},
     ]
     try:
-        pdns.create_zone(zone, kind="Master", catalog=s.catalog_zone, rrsets=rrsets)
-        pdns.ensure_tsig_allow_axfr(zone)
+        if custom:
+            # custom DNS: not a catalog member; only the master's primary key
+            # is allowed (panel access) until the user adds per-zone keys
+            pdns.create_zone(zone, kind="Master", catalog=None, rrsets=rrsets)
+            pdns.set_zone_tsig_keys(zone, [s.tsig_key] if s.tsig_key else [])
+        else:
+            pdns.create_zone(zone, kind="Master", catalog=s.catalog_zone, rrsets=rrsets)
+            pdns.ensure_tsig_allow_axfr(zone)
     except PdnsError as e:
         flash(request, str(e), "error")
         return RedirectResponse("/zones", status_code=303)
 
     db.add(ZoneAccess(zone=zone, user_id=user.id, is_owner=True))
-    log_history(db, user.id, "zone", zone, f"Create zone {zone}")
-    flash(request, f"Zone {to_unicode(zone)} created")
+    log_history(db, user.id, "zone", zone,
+                f"Create zone {zone}" + (" (custom DNS)" if custom else ""))
+    if custom:
+        flash(request, f"Zone {to_unicode(zone)} created in custom DNS mode — "
+                       "add a transfer key below for your secondaries")
+    else:
+        flash(request, f"Zone {to_unicode(zone)} created")
     return RedirectResponse(f"/zones/{zone.rstrip('.')}", status_code=303)
 
 
@@ -236,9 +251,113 @@ def zone_view(request: Request, zone: str = Depends(zone_guard),
     for r in records:
         r["rel"] = rel_name(r["name"], zone)
     _mark_ns(records, zone, check)
+
+    custom = is_custom_zone(zdata, settings().catalog_zone)
     return render(request, "zone_view.html", user=user, zone=zone,
                   zone_display=to_unicode(zone.rstrip(".")), zdata=zdata,
-                  soa=soa, records=records, owner=owner or "—", check=check)
+                  soa=soa, records=records, owner=owner or "—", check=check,
+                  custom=custom)
+
+
+@router.post("/zones/{zone}/mode")
+def zone_mode(request: Request, mode: str = Form(...), zone: str = Depends(zone_guard),
+              user: User = Depends(current_user), db: Session = Depends(get_db)):
+    s = settings()
+    try:
+        if mode == "custom":
+            pdns.set_zone_catalog(zone, None)
+            pdns.set_zone_tsig_keys(zone, [s.tsig_key] if s.tsig_key else [])
+            log_history(db, user.id, "zone", zone, "Switch to custom DNS mode")
+            flash(request, f"{to_unicode(zone.rstrip('.'))} is now custom DNS — "
+                           "it left the catalog; add transfer keys for your secondaries")
+        elif mode == "catalog":
+            former = pdns.zone_tsig_keys(zone)
+            pdns.set_zone_catalog(zone, s.catalog_zone)
+            pdns.set_zone_kind(zone, "Master")        # back under pdns NOTIFY
+            pdns.set_zone_also_notify(zone, [])       # drop any custom notify list
+            pdns.ensure_tsig_allow_axfr(zone)
+            # clean up per-zone keys that are no longer referenced anywhere
+            globals_ = {canonical(n) for n in s.tsig_key_names}
+            for kn in former:
+                if canonical(kn) not in globals_ and not pdns.tsig_key_in_use(kn):
+                    pdns.delete_tsig_key(kn)
+            notify_zone(zone)
+            log_history(db, user.id, "zone", zone, "Switch to catalog DNS mode")
+            flash(request, f"{to_unicode(zone.rstrip('.'))} is back on the catalog (auto-fleet)")
+        else:
+            flash(request, f"Unknown mode '{mode}'", "error")
+    except PdnsError as e:
+        flash(request, str(e), "error")
+    return RedirectResponse(f"/zones/{zone.rstrip('.')}/edit", status_code=303)
+
+
+@router.post("/zones/{zone}/notify-targets")
+def zone_notify_targets(request: Request, targets: str = Form(""),
+                        zone: str = Depends(zone_guard), user: User = Depends(current_user),
+                        db: Session = Depends(get_db)):
+    try:
+        parsed = parse_targets(targets)
+    except ValueError:
+        flash(request, "Notify targets must be IPs or hostnames (optionally :port), "
+                       "comma/space separated", "error")
+        return RedirectResponse(f"/zones/{zone.rstrip('.')}/edit", status_code=303)
+    try:
+        pdns.set_zone_also_notify(zone, parsed)
+        # a non-empty list means the panel notifies exactly those servers, so
+        # keep pdns from notifying anyone (Native = no pdns NOTIFY); an empty
+        # list restores the default (Master → pdns notifies fleet + NS)
+        pdns.set_zone_kind(zone, "Native" if parsed else "Master")
+    except PdnsError as e:
+        flash(request, str(e), "error")
+        return RedirectResponse(f"/zones/{zone.rstrip('.')}/edit", status_code=303)
+    log_history(db, user.id, "zone", zone,
+                f"Set notify targets: {', '.join(parsed) if parsed else '(default)'}")
+    flash(request, f"Notify targets updated ({len(parsed)} server(s))" if parsed
+                   else "Notify targets cleared — default behaviour restored")
+    return RedirectResponse(f"/zones/{zone.rstrip('.')}/edit", status_code=303)
+
+
+@router.post("/zones/{zone}/keys")
+def zone_key_add(request: Request, action: str = Form("generate"), name: str = Form(...),
+                 algorithm: str = Form("hmac-sha256"), secret: str = Form(""),
+                 zone: str = Depends(zone_guard), user: User = Depends(current_user),
+                 db: Session = Depends(get_db)):
+    key_name = name.strip().rstrip(".").lower()
+    if not re.fullmatch(r"[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*", key_name or ""):
+        flash(request, f"'{name}' is not a valid key name", "error")
+        return RedirectResponse(f"/zones/{zone.rstrip('.')}/edit", status_code=303)
+    try:
+        pdns.create_tsig_key(key_name, algorithm,
+                             secret=secret.strip() if action == "import" else None)
+        keys = pdns.zone_tsig_keys(zone)
+        if key_name not in keys:
+            keys.append(key_name)
+        pdns.set_zone_tsig_keys(zone, keys)
+        log_history(db, user.id, "zone", zone,
+                    f"Add transfer key {key_name} ({action})")
+        flash(request, f"Transfer key {key_name} added")
+    except PdnsError as e:
+        flash(request, str(e), "error")
+    return RedirectResponse(f"/zones/{zone.rstrip('.')}/edit", status_code=303)
+
+
+@router.post("/zones/{zone}/keys/{keyname}/delete")
+def zone_key_delete(request: Request, keyname: str, zone: str = Depends(zone_guard),
+                    user: User = Depends(current_user), db: Session = Depends(get_db)):
+    s = settings()
+    if s.tsig_key and canonical(keyname) == canonical(s.tsig_key):
+        flash(request, "Cannot remove the master's primary key", "error")
+        return RedirectResponse(f"/zones/{zone.rstrip('.')}/edit", status_code=303)
+    try:
+        keys = [k for k in pdns.zone_tsig_keys(zone) if canonical(k) != canonical(keyname)]
+        pdns.set_zone_tsig_keys(zone, keys)
+        if not pdns.tsig_key_in_use(keyname):
+            pdns.delete_tsig_key(keyname)
+        log_history(db, user.id, "zone", zone, f"Remove transfer key {keyname}")
+        flash(request, f"Transfer key {keyname} removed")
+    except PdnsError as e:
+        flash(request, str(e), "error")
+    return RedirectResponse(f"/zones/{zone.rstrip('.')}/edit", status_code=303)
 
 
 def _records_partial(request: Request, zone: str, user: User, db: Session | None = None):
@@ -261,6 +380,51 @@ def _rrset_contents(zone: str, name: str, rtype: str) -> tuple[int | None, list[
     return None, []
 
 
+@router.get("/zones/{zone}/spf")
+def spf_edit(request: Request, name: str = "", content: str = "",
+             zone: str = Depends(zone_guard), user: User = Depends(current_user)):
+    target = canonical(name) if name else canonical(zone)
+    ttl, existing = _rrset_contents(zone, target, "TXT")
+    orig = content
+    if not orig:  # find an existing SPF in the TXT rrset, else start fresh
+        orig = next((r["content"] for r in existing if is_spf(r["content"])), "")
+    parsed = parse_spf(orig) if orig else parse_spf("v=spf1 ~all")
+    return render(request, "spf.html", user=user, zone=zone,
+                  zone_display=to_unicode(zone.rstrip(".")), host=rel_name(target, zone),
+                  rname=target, orig_content=orig, ttl=ttl or 3600, parsed=parsed)
+
+
+@router.post("/zones/{zone}/spf/save")
+def spf_save(request: Request, name: str = Form(...), orig_content: str = Form(""),
+             content: str = Form(...), ttl: int = Form(3600),
+             zone: str = Depends(zone_guard), user: User = Depends(current_user),
+             db: Session = Depends(get_db)):
+    target = canonical(name)
+    parsed = parse_spf(content)
+    if not parsed["valid"]:
+        flash(request, "SPF record has errors — fix them and save again", "error")
+        return render(request, "spf.html", user=user, zone=zone,
+                      zone_display=to_unicode(zone.rstrip(".")), host=rel_name(target, zone),
+                      rname=target, orig_content=orig_content, ttl=ttl, parsed=parsed)
+    new_quoted = quote_txt(parsed["raw"])
+    try:
+        cur_ttl, existing = _rrset_contents(zone, target, "TXT")
+        remaining = [r for r in existing if r["content"] != orig_content] if orig_content \
+            else list(existing)
+        if not any(r["content"] == new_quoted for r in remaining):
+            remaining.append({"content": new_quoted, "disabled": False})
+        pdns.replace_rrset(zone, target, "TXT", ttl, remaining)
+        notify_zone(zone)
+    except PdnsError as e:
+        flash(request, str(e), "error")
+        return render(request, "spf.html", user=user, zone=zone,
+                      zone_display=to_unicode(zone.rstrip(".")), host=rel_name(target, zone),
+                      rname=target, orig_content=orig_content, ttl=ttl, parsed=parsed)
+    log_history(db, user.id, "zone", zone, f"Update SPF at {rel_name(target, zone)}: {parsed['raw']}")
+    flash(request, f"SPF record saved for {rel_name(target, zone)}")
+    return RedirectResponse(f"/zones/{zone.rstrip('.')}", status_code=303)
+
+
 @router.post("/zones/{zone}/records")
 def record_create(
     request: Request,
@@ -280,7 +444,7 @@ def record_create(
         existing.append({"content": content, "disabled": False})
     try:
         pdns.replace_rrset(zone, name, rtype, ttl, existing)
-        pdns.notify(zone)
+        notify_zone(zone)
         log_history(db, user.id, "zone", zone, f"Create record {name} {rtype} {content}")
     except PdnsError as e:
         flash(request, str(e), "error")
@@ -339,7 +503,7 @@ def record_update(
             if not any(r["content"] == new_content for r in target):
                 target.append({"content": new_content, "disabled": False})
             pdns.replace_rrset(zone, new_name, rtype, ttl, target)
-        pdns.notify(zone)
+        notify_zone(zone)
         log_history(db, user.id, "zone", zone,
                     f"Update record {orig_name} {rtype}: {orig_content} -> {new_content}")
     except PdnsError as e:
@@ -361,7 +525,7 @@ def record_delete(
         ttl, existing = _rrset_contents(zone, name, rtype)
         remaining = [r for r in existing if r["content"] != content]
         pdns.replace_rrset(zone, name, rtype, ttl or 3600, remaining)
-        pdns.notify(zone)
+        notify_zone(zone)
         log_history(db, user.id, "zone", zone, f"Delete record {name} {rtype} {content}")
     except PdnsError as e:
         flash(request, str(e), "error")
@@ -373,8 +537,22 @@ def zone_edit(request: Request, zone: str = Depends(zone_guard),
               user: User = Depends(current_user)):
     zdata = pdns.get_zone(zone)
     soa, _ = flatten_rrsets(zdata["rrsets"])
+    s = settings()
+    custom = is_custom_zone(zdata, s.catalog_zone)
+    primary = canonical(s.tsig_key) if s.tsig_key else None
+    per_zone_keys = []
+    if custom:
+        for kid in zdata.get("master_tsig_key_ids", []):
+            if kid == primary:
+                continue  # the master's own key, not a per-secondary key
+            k = pdns.get_tsig_key(kid) or {}
+            per_zone_keys.append({"name": kid.rstrip("."), "algorithm": k.get("algorithm", "?"),
+                                  "secret": k.get("key", "")})
+    notify_targets = pdns.get_zone_also_notify(zone) if custom else []
     return render(request, "zone_edit.html", user=user, zone=zone,
-                  zone_display=to_unicode(zone.rstrip(".")), zdata=zdata, soa=soa)
+                  zone_display=to_unicode(zone.rstrip(".")), zdata=zdata, soa=soa,
+                  custom=custom, per_zone_keys=per_zone_keys, master_host=s.master_host,
+                  notify_targets=notify_targets)
 
 
 @router.post("/zones/{zone}/soa")
@@ -398,7 +576,7 @@ def soa_update(
     soa.refresh, soa.retry, soa.expire, soa.minimum = refresh, retry, expire, minimum
     try:
         pdns.replace_rrset(zone, zone, "SOA", ttl, [{"content": soa.content(), "disabled": False}])
-        pdns.notify(zone)
+        notify_zone(zone)
         log_history(db, user.id, "zone", zone, "Update SOA")
         flash(request, "SOA updated")
     except PdnsError as e:
@@ -409,11 +587,25 @@ def soa_update(
 @router.post("/zones/{zone}/delete")
 def zone_delete(request: Request, zone: str = Depends(zone_guard),
                 user: User = Depends(current_user), db: Session = Depends(get_db)):
+    s = settings()
+    # capture the zone's per-zone (non-global) TSIG keys before deletion
+    globals_ = {canonical(n) for n in s.tsig_key_names}
+    try:
+        former_keys = [k for k in pdns.zone_tsig_keys(zone) if canonical(k) not in globals_]
+    except PdnsError:
+        former_keys = []
     try:
         pdns.delete_zone(zone)
     except PdnsError as e:
         flash(request, str(e), "error")
         return RedirectResponse(f"/zones/{zone.rstrip('.')}/edit", status_code=303)
+    # clean up this zone's per-zone keys if no other zone uses them
+    for kn in former_keys:
+        try:
+            if not pdns.tsig_key_in_use(kn):
+                pdns.delete_tsig_key(kn)
+        except PdnsError:
+            pass
     for za in db.execute(select(ZoneAccess).where(ZoneAccess.zone == zone)).scalars():
         db.delete(za)
     for zc in db.execute(select(ZoneCheck).where(ZoneCheck.zone == zone)).scalars():
@@ -427,7 +619,7 @@ def zone_delete(request: Request, zone: str = Depends(zone_guard),
 def zone_notify(request: Request, zone: str = Depends(zone_guard),
                 user: User = Depends(current_user)):
     try:
-        pdns.notify(zone)
+        notify_zone(zone)
         flash(request, "DNS NOTIFY sent")
     except PdnsError as e:
         flash(request, str(e), "error")
@@ -449,19 +641,23 @@ def zone_axfr(request: Request, raw: int = 0, zone: str = Depends(zone_guard),
                   zone_display=to_unicode(zone.rstrip(".")), text=text, count=count)
 
 
-@router.get("/zones/{zone}/slaves")
-def zone_slaves(request: Request, zone: str = Depends(zone_guard),
-                user: User = Depends(current_user), db: Session = Depends(get_db)):
+@router.get("/zones/{zone}/servers")
+def zone_servers(request: Request, zone: str = Depends(zone_guard),
+                 user: User = Depends(current_user), db: Session = Depends(get_db)):
     try:
         zdata = pdns.get_zone(zone)
     except PdnsError as e:
-        return render(request, "partials/slave_results.html", user=user, zone=zone,
-                      master_serial=None, rows=[], error=str(e))
+        return render(request, "partials/server_results.html", user=user, zone=zone,
+                      master_serial=None, rows=[], delegation=None, error=str(e))
     master_serial = zdata.get("serial")
     rows = check_slaves(zone, master_serial)
-    log_history(db, user.id, "zone", zone, f"Check slaves: {slave_summary(rows)}")
-    return render(request, "partials/slave_results.html", user=user, zone=zone,
-                  master_serial=master_serial, rows=rows, error=None)
+    delegation = check_delegation(zone, apex_ns(zone))
+    note = slave_summary(rows)
+    if delegation["status"] == "mismatch":
+        note += "; delegation MISMATCH"
+    log_history(db, user.id, "zone", zone, f"Check DNS servers: {note}")
+    return render(request, "partials/server_results.html", user=user, zone=zone,
+                  master_serial=master_serial, rows=rows, delegation=delegation, error=None)
 
 
 @router.get("/zones/{zone}/history")

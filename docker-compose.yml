@@ -3,9 +3,11 @@
 networks:
   dnsnet:
     driver: bridge
+    enable_ipv6: true          # so the web container can run AAAA reachability checks
     ipam:
       config:
         - subnet: 10.89.99.0/24
+        - subnet: fd4d:6f6a:6d00::/64   # ULA; egress via Docker NAT66
 
 services:
   postgres:

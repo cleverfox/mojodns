@@ -10,6 +10,8 @@
     <div class="chips">
       <span class="chip">serial <b id="zone-serial">{{ zdata.serial }}</b></span>
       <span class="chip">owner <b>{{ owner }}</b></span>
+      <span class="chip" title="{% if custom %}not in the catalog — secondaries configured manually{% else %}member of the auto-fleet catalog{% endif %}">
+        mode <b>{{ 'custom' if custom else 'catalog' }}</b></span>
       {% set st = check.status if check else 'unknown' %}
       <span class="chip" title="{% if check %}resolved NS: {{ check.resolved_ns or check.detail or '—' }} · checked {{ check.checked_at.strftime('%d.%m.%Y %H:%M') }}{% else %}not verified yet{% endif %}">
         ns <b><span class="status-dot st-{{ st }}"></span> {{ st }}</b>
@@ -45,16 +47,17 @@
 
 <section class="panel">
   <div class="panel-head">
-    <h1>slaves</h1>
+    <h1>DNS servers</h1>
     <button class="btn btn-ghost" style="margin-left:auto"
-            hx-get="/zones/{{ zone|bare }}/slaves" hx-target="#slave-results" hx-indicator="#slave-spin"
-            title="poll each published nameserver and compare its SOA serial with the master">
-      check slaves ⟲</button>
-    <span id="slave-spin" class="htmx-indicator dim">polling…</span>
+            hx-get="/zones/{{ zone|bare }}/servers" hx-target="#server-results" hx-indicator="#server-spin"
+            title="check the parent delegation and poll each published nameserver's SOA serial">
+      check DNS servers ⟲</button>
+    <span id="server-spin" class="htmx-indicator dim">checking…</span>
   </div>
-  <div id="slave-results">
-    <p class="hint">Poll each published nameserver and compare its SOA serial against the
-      master — green = in sync, yellow = stale serial, red = not answering.</p>
+  <div id="server-results">
+    <p class="hint">Compare the parent zone's delegation with the nameservers this zone
+      publishes, and poll each one's SOA serial — green = in sync, yellow = stale serial,
+      red = not answering.</p>
   </div>
 </section>
 
@@ -62,6 +65,8 @@
   <div class="panel-head">
     <h1>records <span class="count">{{ records|length }}</span></h1>
     <input class="search" type="search" placeholder="filter records…" data-filter="#records-table">
+    <a class="btn btn-ghost" style="margin-left:auto" href="/zones/{{ zone|bare }}/spf"
+       title="build or edit the SPF (v=spf1) TXT record">SPF builder ✎</a>
   </div>
 
   <form class="record-add grid-form"
