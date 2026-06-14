@@ -19,6 +19,12 @@ class User(Base):
     password_hash: Mapped[str] = mapped_column(String(255))
     role: Mapped[str] = mapped_column(String(16), default="owner")
     state: Mapped[str] = mapped_column(String(16), default="active")
+    # admin can deactivate an account without deleting it
+    enabled: Mapped[bool] = mapped_column(default=True)
+    # force a password change at next login (new account / admin reset / expired)
+    must_change_password: Mapped[bool] = mapped_column(default=False)
+    last_login: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_pwd_change: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     # per-minute cap on outbound-probe actions (checks / DNS-server poll);
     # NULL ⇒ use settings.default_check_rate_limit
     check_rate_limit: Mapped[int | None] = mapped_column(default=None)
@@ -93,8 +99,8 @@ class ApiToken(Base):
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     user_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("app_users.id", ondelete="CASCADE"))
-    token: Mapped[str] = mapped_column(String(64), unique=True)
-    note: Mapped[str | None] = mapped_column(String(255))
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True)  # sha256 hex
+    name: Mapped[str] = mapped_column(String(255))
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 

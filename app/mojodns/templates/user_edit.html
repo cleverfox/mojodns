@@ -9,7 +9,11 @@
     <h1 class="mono">{{ target.login }}</h1>
     <div class="chips">
       <span class="chip">role <b>{{ target.role }}</b></span>
-      <span class="chip">since <b>{{ target.created_at.strftime('%d.%m.%Y') }}</b></span>
+      <span class="chip">status <b><span class="status-dot st-{{ 'ok' if target.enabled else 'error' }}"></span>
+        {{ 'enabled' if target.enabled else 'disabled' }}</b></span>
+      <span class="chip">last login <b>{{ target.last_login.strftime('%d.%m.%Y %H:%M') if target.last_login else 'never' }}</b></span>
+      <span class="chip">pwd changed <b>{{ target.last_pwd_change.strftime('%d.%m.%Y') if target.last_pwd_change else '—' }}</b></span>
+      {% if target.must_change_password %}<span class="chip">⚠ must change password</span>{% endif %}
     </div>
     <div class="row-actions">
       <a class="btn btn-ghost" href="/users/{{ target.id }}/history">history</a>
@@ -24,11 +28,13 @@
         <option value="admin" {{ 'selected' if target.role == 'admin' }}>admin</option>
       </select>
     </label>
-    <label class="span2">new password <input name="password" type="password"
-           placeholder="leave empty to keep current"></label>
+    <label class="span2">reset password <span class="dim">(leave empty to keep; a set password is temporary — user must change it at next login)</span>
+      <input name="password" type="password" placeholder="leave empty to keep current"></label>
     <label class="span2">check rate limit <span class="dim">(probes/min; blank = default {{ default_check_rate_limit }})</span>
       <input name="check_rate_limit" type="number" min="0" value="{{ target.check_rate_limit if target.check_rate_limit is not none else '' }}"
              placeholder="default {{ default_check_rate_limit }}"></label>
+    <label class="check-inline span2"><input type="checkbox" name="enabled" value="true"
+           {{ 'checked' if target.enabled }}> account enabled (uncheck to deactivate without deleting)</label>
     <button class="btn btn-primary span2" type="submit">save ▸</button>
   </form>
 </section>
@@ -51,35 +57,6 @@
       </ul>
     </div>
   </div>
-</section>
-
-<section class="panel">
-  <div class="panel-head">
-    <h1>API tokens</h1>
-    <form method="post" action="/users/{{ target.id }}/tokens" class="inline-form">
-      <input name="note" placeholder="note (optional)">
-      <button class="btn btn-primary" type="submit">+ token</button>
-    </form>
-  </div>
-  <table class="data">
-    <thead><tr><th>token</th><th>note</th><th>created</th><th class="t-right">actions</th></tr></thead>
-    <tbody>
-      {% for t in tokens %}
-      <tr>
-        <td class="mono">{{ t.token }}</td>
-        <td class="dim">{{ t.note or '—' }}</td>
-        <td class="dim">{{ t.created_at.strftime('%d.%m.%Y') }}</td>
-        <td class="t-right">
-          <form method="post" action="/users/{{ target.id }}/tokens/{{ t.id }}/delete" class="inline">
-            <button class="btn btn-ghost btn-danger" type="submit">×</button>
-          </form>
-        </td>
-      </tr>
-      {% else %}
-      <tr><td colspan="4" class="empty">no tokens — used for GET /api/v1/zones?token=… and as PDNS_Token for acme.sh dns_pdns</td></tr>
-      {% endfor %}
-    </tbody>
-  </table>
 </section>
 
 <section class="panel panel-danger">

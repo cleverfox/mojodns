@@ -1,13 +1,36 @@
+from datetime import datetime, timedelta, timezone
+
 from fastapi import Depends, HTTPException, Request
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from .config import settings
 from .db import User, ZoneAccess, get_db
 from .pdns import canonical
 
+# paths a must-change-password user may still reach (to actually change it / leave)
+_PWCHANGE_EXEMPT = {"/account/password", "/logout"}
+
+
+def _redirect(path: str) -> HTTPException:
+    return HTTPException(status_code=303, headers={"Location": path})
+
 
 def _redirect_login() -> HTTPException:
-    return HTTPException(status_code=303, headers={"Location": "/login"})
+    return _redirect("/login")
+
+
+def needs_password_change(user: User) -> bool:
+    """True if the user must set a new password before doing anything else:
+    a temporary (new / admin-reset) password, or one older than the max age."""
+    if user.must_change_password:
+        return True
+    max_days = settings().password_max_age_days
+    if max_days <= 0:
+        return False
+    if user.last_pwd_change is None:
+        return True
+    return datetime.now(timezone.utc) - user.last_pwd_change > timedelta(days=max_days)
 
 
 def current_user(request: Request, db: Session = Depends(get_db)) -> User:
@@ -15,9 +38,11 @@ def current_user(request: Request, db: Session = Depends(get_db)) -> User:
     if not uid:
         raise _redirect_login()
     user = db.get(User, uid)
-    if not user or user.state != "active":
+    if not user or not user.enabled or user.state != "active":
         request.session.clear()
         raise _redirect_login()
+    if needs_password_change(user) and request.url.path not in _PWCHANGE_EXEMPT:
+        raise _redirect("/account/password")
     return user
 
 

@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <!-- MOJO DNS mark: the amber wordmark-block on the dark terminal background -->
+  <rect width="64" height="64" rx="10" fill="#0c0e0d"/>
+  <rect x="9" y="13" width="46" height="38" rx="3" fill="#ffb454"/>
+  <text x="32" y="33" text-anchor="middle" dominant-baseline="central"
+        font-family="'IBM Plex Mono', ui-monospace, 'DejaVu Sans Mono', monospace"
+        font-weight="700" font-size="34" fill="#161108">M</text>
+</svg>

@@ -12,13 +12,11 @@ Implements exactly the surface dns_pdns.sh uses:
     PUT   /api/v1/servers/{sid}/zones/{zone}/notify
 """
 
-from datetime import datetime, timezone
-
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ..db import ApiToken, User, get_db, log_history
+from ..apitokens import lookup_token
+from ..db import User, get_db, log_history
 from ..deps import can_access_zone, user_zones
 from ..pdns import PdnsError, canonical, pdns
 from ..notifier import notify_zone
@@ -30,11 +28,10 @@ def header_token_user(
     x_api_key: str = Header(..., alias="X-API-Key"),
     db: Session = Depends(get_db),
 ) -> User:
-    row = db.execute(select(ApiToken).where(ApiToken.token == x_api_key)).scalar_one_or_none()
-    if not row or (row.expires_at and row.expires_at < datetime.now(timezone.utc)):
-        raise HTTPException(status_code=401, detail={"error": "Unauthorized"})
-    user = db.get(User, row.user_id)
-    if not user or user.state != "active":
+    user, err = lookup_token(db, x_api_key)
+    if err == "expired":
+        raise HTTPException(status_code=401, detail={"error": "Token expired"})
+    if err:
         raise HTTPException(status_code=401, detail={"error": "Unauthorized"})
     return user
 

@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 208 64" width="208" height="64">
+  <!-- full "MOJO DNS" wordmark: amber MOJO block + amber DNS, dark background -->
+  <rect width="208" height="64" rx="10" fill="#0c0e0d"/>
+  <rect x="16" y="14" width="92" height="36" rx="2" fill="#ffb454"/>
+  <text x="62" y="33" text-anchor="middle" dominant-baseline="central"
+        font-family="'IBM Plex Mono', ui-monospace, 'DejaVu Sans Mono', monospace"
+        font-weight="700" font-size="28" fill="#161108">MOJO</text>
+  <text x="118" y="33" dominant-baseline="central"
+        font-family="'IBM Plex Mono', ui-monospace, 'DejaVu Sans Mono', monospace"
+        font-weight="700" font-size="28" fill="#ffb454" letter-spacing="1">DNS</text>
+</svg>

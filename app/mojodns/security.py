@@ -43,3 +43,9 @@ def needs_rehash(stored: str) -> bool:
 
 def make_token() -> str:
     return secrets.token_hex(24)
+
+
+def hash_token(token: str) -> str:
+    """API tokens are high-entropy, so a fast SHA-256 (not a slow KDF) is enough
+    to store them safely at rest. Lookups compare hashes, never plaintext."""
+    return hashlib.sha256(token.encode()).hexdigest()

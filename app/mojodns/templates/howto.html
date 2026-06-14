@@ -6,25 +6,12 @@
   <div class="panel-head"><h1>API tokens</h1></div>
   <p class="prose">Most automation around mojodns — listing your zones, issuing TLS
     certificates, dynamic DNS — is authenticated with an <b>API token</b>. A token acts
-    on your behalf: it can only reach zones you own or edit. Pass it either as the
-    <code>X-API-Key</code> HTTP header or as a <code>?token=…</code> query parameter.</p>
-
-  {% if tokens %}
-  <table class="data">
-    <thead><tr><th>your token</th><th>note</th><th>created</th></tr></thead>
-    <tbody>
-      {% for t in tokens %}
-      <tr>
-        <td class="mono">{{ t.token }}</td>
-        <td class="dim">{{ t.note or '—' }}</td>
-        <td class="dim">{{ t.created_at.strftime('%d.%m.%Y') }}</td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-  {% else %}
-  <p class="prose dim">You have no tokens yet — ask an administrator to create one for you.</p>
-  {% endif %}
+    on your behalf: it can only reach zones you own or edit. Pass it as the
+    <code>X-API-Key</code> HTTP header (preferred) or as a <code>?token=…</code> query
+    parameter.</p>
+  <p class="prose">Create and revoke your tokens on the <a class="zone-link" href="/account">account</a>
+    page — pick a name and an expiry; the secret is shown <b>once</b>, at creation, and stored
+    hashed thereafter. An expired token returns <code>401 token expired</code>.</p>
 
   <h2 class="subhead">list zones available to your token</h2>
   <pre class="code">curl -H "X-API-Key: &lt;token&gt;" {{ base }}/api/v1/zones</pre>

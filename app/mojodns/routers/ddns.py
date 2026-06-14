@@ -12,13 +12,11 @@ no NOTIFY — safe to run from cron every minute.
 """
 
 import ipaddress
-from datetime import datetime, timezone
-
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ..db import ApiToken, User, get_db, log_history
+from ..apitokens import lookup_token
+from ..db import User, get_db, log_history
 from ..deps import can_access_zone
 from ..idn import to_ascii
 from ..pdns import PdnsError, canonical, pdns
@@ -33,14 +31,10 @@ def ddns_user(
     x_api_key: str | None = Header(None, alias="X-API-Key"),
     db: Session = Depends(get_db),
 ) -> User:
-    key = x_api_key or token
-    if not key:
-        raise HTTPException(status_code=401, detail={"error": "missing token"})
-    row = db.execute(select(ApiToken).where(ApiToken.token == key)).scalar_one_or_none()
-    if not row or (row.expires_at and row.expires_at < datetime.now(timezone.utc)):
-        raise HTTPException(status_code=401, detail={"error": "invalid token"})
-    user = db.get(User, row.user_id)
-    if not user or user.state != "active":
+    user, err = lookup_token(db, x_api_key or token or "")
+    if err == "expired":
+        raise HTTPException(status_code=401, detail={"error": "token expired"})
+    if err:
         raise HTTPException(status_code=401, detail={"error": "invalid token"})
     return user
 

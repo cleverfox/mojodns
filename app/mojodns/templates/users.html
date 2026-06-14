@@ -11,28 +11,31 @@
       <form method="post" action="/users" class="grid-form">
         <label>login <input name="login" required></label>
         <label>e-mail <input name="email" type="email"></label>
-        <label>password <input name="password" type="password" required></label>
+        <label>temporary password <input name="password" type="password" required></label>
         <label>role
           <select name="role">
             <option value="owner">owner</option>
             <option value="admin">admin</option>
           </select>
         </label>
+        <label class="check-inline span2"><input type="checkbox" name="enabled" value="true" checked> enabled</label>
+        <p class="hint span2">The user must change this temporary password at first login.</p>
         <button class="btn btn-primary span2" type="submit">create user ▸</button>
       </form>
     </details>
   </div>
 
   <table class="data" id="users-table">
-    <thead><tr><th>login</th><th>e-mail</th><th>role</th><th>zones</th><th>since</th><th class="t-right">actions</th></tr></thead>
+    <thead><tr><th>login</th><th>e-mail</th><th>role</th><th>status</th><th>zones</th><th>last login</th><th class="t-right">actions</th></tr></thead>
     <tbody>
       {% for u in users %}
       <tr>
         <td><a class="zone-link" href="/users/{{ u.id }}">{{ u.login }}</a></td>
         <td class="dim">{{ u.email or '—' }}</td>
         <td><span class="badge badge-{{ u.role }}">{{ u.role }}</span></td>
+        <td><span class="status-dot st-{{ 'ok' if u.enabled else 'error' }}"></span> {{ 'enabled' if u.enabled else 'disabled' }}</td>
         <td class="mono dim">{{ zone_counts.get(u.id, 0) }}</td>
-        <td class="dim">{{ u.created_at.strftime('%d.%m.%Y') }}</td>
+        <td class="dim mono">{{ u.last_login.strftime('%d.%m.%Y') if u.last_login else 'never' }}</td>
         <td class="t-right row-actions">
           <a class="btn btn-ghost" href="/users/{{ u.id }}">edit</a>
           <a class="btn btn-ghost" href="/users/{{ u.id }}/history">history</a>

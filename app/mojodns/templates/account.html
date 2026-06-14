@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block title %}account · mojodns{% endblock %}
+{% block content %}
+
+<div class="crumbs"><strong>account</strong></div>
+
+<section class="panel">
+  <div class="panel-head"><h1 class="mono">{{ user.login }}</h1>
+    <span class="chip">{{ 'admin' if user.is_admin else 'owner' }}</span></div>
+  <table class="kv">
+    <tr><th>last login</th><td class="mono">{{ user.last_login.strftime('%d.%m.%Y %H:%M UTC') if user.last_login else '—' }}</td>
+        <th>password changed</th><td class="mono">{{ user.last_pwd_change.strftime('%d.%m.%Y') if user.last_pwd_change else '—' }}</td></tr>
+  </table>
+  <div class="row-actions panel-actions">
+    <a class="btn btn-ghost" href="/account/password">change password</a>
+  </div>
+</section>
+
+<section class="panel">
+  <div class="panel-head"><h1>API tokens</h1></div>
+  <p class="hint">Authenticate automation with the <code>X-API-Key</code> header.
+    Tokens are stored hashed — the secret is shown <b>once</b>, here, at creation.
+    See <a class="zone-link" href="/howto">how to use</a> for client examples.</p>
+
+  {% if new_token %}
+  <div class="flash flash-ok">New token — copy it now, it won't be shown again:
+    <div class="rec-data mono" style="margin-top:6px;user-select:all">{{ new_token }}</div>
+  </div>
+  {% endif %}
+
+  <table class="data">
+    <thead><tr><th>name</th><th>created</th><th>expires</th><th class="t-right">actions</th></tr></thead>
+    <tbody>
+      {% for t in tokens %}
+      {% set expired = t.expires_at and t.expires_at < now %}
+      <tr class="{{ 'is-disabled' if expired else '' }}">
+        <td class="mono">{{ t.name }}</td>
+        <td class="mono dim">{{ t.created_at.strftime('%d.%m.%Y') }}</td>
+        <td class="mono {{ 'ns-mismatch' if expired }}">{{ t.expires_at.strftime('%d.%m.%Y') if t.expires_at else 'never' }}{% if expired %} (expired){% endif %}</td>
+        <td class="t-right">
+          <form method="post" action="/account/tokens/{{ t.id }}/delete" class="inline"
+                onsubmit="return confirm('Revoke token {{ t.name }}?')">
+            <button class="btn btn-ghost btn-danger" type="submit">×</button>
+          </form>
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="4" class="empty">no tokens yet</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <form method="post" action="/account/tokens" class="grid-form">
+    <label class="grow">name <input name="name" placeholder="e.g. acme-laptop" required></label>
+    <label>expires
+      <select name="interval">
+        {% for i in intervals %}<option value="{{ i }}"{{ ' selected' if i == default_interval else '' }}>{{ i }}</option>{% endfor %}
+      </select>
+    </label>
+    <button class="btn btn-primary" type="submit">+ create token</button>
+  </form>
+</section>
+
+{% endblock %}

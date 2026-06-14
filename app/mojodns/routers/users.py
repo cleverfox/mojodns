@@ -1,15 +1,21 @@
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import RedirectResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..config import settings
-from ..db import ApiToken, HistoryEntry, User, ZoneAccess, get_db, log_history
+from ..db import HistoryEntry, User, ZoneAccess, get_db, log_history
 from ..deps import require_admin
-from ..security import hash_password, make_token
+from ..security import hash_password
 from ..templating import flash, render
 
 router = APIRouter(prefix="/users")
+
+
+def _flag(v: str) -> bool:
+    return v.strip().lower() in ("1", "true", "on", "yes")
 
 
 @router.get("")
@@ -29,6 +35,7 @@ def user_create(
     email: str = Form(""),
     password: str = Form(...),
     role: str = Form("owner"),
+    enabled: str = Form("true"),
     admin: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
@@ -42,11 +49,14 @@ def user_create(
         password_hash=hash_password(password),
         role="admin" if role == "admin" else "owner",
         state="active",
+        enabled=_flag(enabled),
+        must_change_password=True,           # the supplied password is temporary
+        last_pwd_change=datetime.now(timezone.utc),
     )
     db.add(user)
     db.flush()
     log_history(db, admin.id, "user", login, f"Create user {login} ({user.role})")
-    flash(request, f"User {login} created")
+    flash(request, f"User {login} created — they must set a new password at first login")
     return RedirectResponse("/users", status_code=303)
 
 
@@ -62,11 +72,10 @@ def user_edit(request: Request, uid: int, admin: User = Depends(require_admin),
               db: Session = Depends(get_db)):
     target = _load_user(db, uid)
     grants = db.execute(select(ZoneAccess).where(ZoneAccess.user_id == uid)).scalars().all()
-    tokens = db.execute(select(ApiToken).where(ApiToken.user_id == uid)).scalars().all()
     return render(request, "user_edit.html", user=admin, target=target,
                   owned=[g.zone for g in grants if g.is_owner],
                   granted=[g.zone for g in grants if not g.is_owner],
-                  tokens=tokens, default_check_rate_limit=settings().default_check_rate_limit)
+                  default_check_rate_limit=settings().default_check_rate_limit)
 
 
 @router.post("/{uid}")
@@ -76,6 +85,7 @@ def user_update(
     email: str = Form(""),
     role: str = Form("owner"),
     password: str = Form(""),
+    enabled: str = Form(""),
     check_rate_limit: str = Form(""),
     admin: User = Depends(require_admin),
     db: Session = Depends(get_db),
@@ -83,12 +93,16 @@ def user_update(
     target = _load_user(db, uid)
     target.email = email.strip() or None
     target.role = "admin" if role == "admin" else "owner"
+    target.enabled = _flag(enabled)
     rl = check_rate_limit.strip()
     target.check_rate_limit = max(0, int(rl)) if rl.isdigit() else None
     log_history(db, admin.id, "user", target.login, "Update user profile")
     if password:
+        # an admin-set password is temporary — force the user to change it
         target.password_hash = hash_password(password)
-        log_history(db, admin.id, "user", target.login, "Update user password")
+        target.must_change_password = True
+        target.last_pwd_change = datetime.now(timezone.utc)
+        log_history(db, admin.id, "user", target.login, "Reset user password (temporary)")
     flash(request, "User updated")
     return RedirectResponse(f"/users/{uid}", status_code=303)
 
@@ -122,22 +136,3 @@ def user_history(request: Request, uid: int, admin: User = Depends(require_admin
     ).all()
     return render(request, "history.html", user=admin, title=f"History · {target.login}",
                   back=f"/users/{uid}", entries=entries)
-
-
-@router.post("/{uid}/tokens")
-def token_create(request: Request, uid: int, note: str = Form(""),
-                 admin: User = Depends(require_admin), db: Session = Depends(get_db)):
-    target = _load_user(db, uid)
-    db.add(ApiToken(user_id=uid, token=make_token(), note=note.strip() or None))
-    log_history(db, admin.id, "user", target.login, "Create API token")
-    return RedirectResponse(f"/users/{uid}", status_code=303)
-
-
-@router.post("/{uid}/tokens/{tid}/delete")
-def token_delete(request: Request, uid: int, tid: int,
-                 admin: User = Depends(require_admin), db: Session = Depends(get_db)):
-    token = db.get(ApiToken, tid)
-    if token and token.user_id == uid:
-        db.delete(token)
-        log_history(db, admin.id, "user", _load_user(db, uid).login, "Delete API token")
-    return RedirectResponse(f"/users/{uid}", status_code=303)

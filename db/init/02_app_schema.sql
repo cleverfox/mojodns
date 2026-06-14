@@ -11,6 +11,10 @@ CREATE TABLE app_users (
   role          VARCHAR(16)  NOT NULL DEFAULT 'owner'
                 CHECK (role IN ('admin', 'owner')),
   state         VARCHAR(16)  NOT NULL DEFAULT 'active',
+  enabled       BOOLEAN NOT NULL DEFAULT true,
+  must_change_password BOOLEAN NOT NULL DEFAULT false,
+  last_login    TIMESTAMPTZ,
+  last_pwd_change TIMESTAMPTZ,
   -- per-minute cap on outbound-probe actions; NULL = use the global default
   check_rate_limit INTEGER,
   created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -72,11 +76,13 @@ CREATE TABLE cert_observations (
 CREATE INDEX cert_obs_zone_idx ON cert_observations(zone);
 CREATE INDEX cert_obs_expiry_idx ON cert_observations(not_after);
 
+-- API tokens are stored hashed (SHA-256 hex); the plaintext is shown once, at
+-- creation, and never persisted. `name` lets the owner tell tokens apart.
 CREATE TABLE api_tokens (
   id         BIGSERIAL PRIMARY KEY,
   user_id    BIGINT NOT NULL REFERENCES app_users(id) ON DELETE CASCADE,
-  token      VARCHAR(64) NOT NULL UNIQUE,
-  note       VARCHAR(255),
+  token_hash VARCHAR(64) NOT NULL UNIQUE,
+  name       VARCHAR(255) NOT NULL,
   expires_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );

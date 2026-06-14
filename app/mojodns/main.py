@@ -15,8 +15,8 @@ from .config import settings
 from .csrf import CSRFMiddleware
 from .db import Base, Proxy, SessionLocal, User, engine
 from .pdns import canonical, is_custom_zone, pdns
-from .routers import api, auth, checks, ddns, pdns_compat, proxies, users, zones
-from .security import hash_password
+from .routers import account, api, auth, checks, ddns, pdns_compat, proxies, users, zones
+from .security import hash_password, hash_token
 from .verify import check_zones, store_results, summarize
 
 log = logging.getLogger("mojodns")
@@ -29,6 +29,38 @@ def _migrate() -> None:
     with engine.begin() as conn:
         conn.execute(text(
             "ALTER TABLE app_users ADD COLUMN IF NOT EXISTS check_rate_limit integer"))
+        # account lifecycle columns
+        conn.execute(text(
+            "ALTER TABLE app_users ADD COLUMN IF NOT EXISTS enabled boolean NOT NULL DEFAULT true"))
+        conn.execute(text(
+            "ALTER TABLE app_users ADD COLUMN IF NOT EXISTS must_change_password boolean NOT NULL DEFAULT false"))
+        conn.execute(text("ALTER TABLE app_users ADD COLUMN IF NOT EXISTS last_login timestamptz"))
+        conn.execute(text("ALTER TABLE app_users ADD COLUMN IF NOT EXISTS last_pwd_change timestamptz"))
+        # existing users: start the password-age clock at upgrade time so we
+        # don't force everyone to rotate immediately
+        conn.execute(text(
+            "UPDATE app_users SET last_pwd_change = now() WHERE last_pwd_change IS NULL"))
+        _migrate_api_tokens(conn)
+
+
+def _migrate_api_tokens(conn) -> None:
+    """Hash-at-rest migration for api_tokens: add token_hash + name, hash any
+    existing plaintext tokens, then drop the plaintext column."""
+    conn.execute(text("ALTER TABLE api_tokens ADD COLUMN IF NOT EXISTS token_hash varchar(64)"))
+    conn.execute(text("ALTER TABLE api_tokens ADD COLUMN IF NOT EXISTS name varchar(255)"))
+    cols = set(conn.execute(text(
+        "SELECT column_name FROM information_schema.columns WHERE table_name = 'api_tokens'"
+    )).scalars())
+    if "token" in cols:  # legacy plaintext column present → migrate then drop it
+        for row in conn.execute(text(
+                "SELECT id, token, note FROM api_tokens WHERE token_hash IS NULL")).all():
+            conn.execute(
+                text("UPDATE api_tokens SET token_hash = :h, name = COALESCE(name, :n) WHERE id = :i"),
+                {"h": hash_token(row.token), "n": (row.note or "imported")[:255], "i": row.id})
+        conn.execute(text("ALTER TABLE api_tokens DROP COLUMN token"))
+    conn.execute(text("UPDATE api_tokens SET name = COALESCE(name, 'token')"))
+    conn.execute(text(
+        "CREATE UNIQUE INDEX IF NOT EXISTS api_tokens_token_hash_uq ON api_tokens(token_hash)"))
 
 
 def bootstrap() -> None:
@@ -126,3 +158,4 @@ app.include_router(pdns_compat.router)
 app.include_router(ddns.router)
 app.include_router(checks.router)
 app.include_router(proxies.router)
+app.include_router(account.router)

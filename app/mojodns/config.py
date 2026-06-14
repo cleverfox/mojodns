@@ -70,6 +70,9 @@ class Settings(BaseSettings):
     default_check_rate_limit: int = 2
     # per-source-IP cap on login attempts/minute (brute-force throttle; 0 = off)
     login_rate_limit: int = 10
+    # force a password change once it is older than this many days (0 = no
+    # age-based expiry; new and admin-reset passwords are always temporary)
+    password_max_age_days: int = 365
 
     @property
     def verify_resolver_list(self) -> list[str]:
