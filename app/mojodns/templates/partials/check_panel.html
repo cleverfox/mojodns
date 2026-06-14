@@ -2,7 +2,7 @@
   <td colspan="6">
     <div class="check-head">
       <span class="subhead">checks · <span class="mono">{{ hostdisp }}</span></span>
-      {% if ips %}
+      {% if ips and proxies %}
       <span class="check-controls">
         <label class="check-port">target
           {% if ips|length > 1 %}
@@ -11,6 +11,15 @@
           </select>
           {% else %}
           <input type="hidden" name="ip" value="{{ ips[0] }}"><span class="mono">{{ ips[0] }}</span>
+          {% endif %}
+        </label>
+        <label class="check-port">from
+          {% if proxies|length > 1 %}
+          <select name="proxy">
+            {% for p in proxies %}<option value="{{ p.id }}">{{ p.name }}</option>{% endfor %}
+          </select>
+          {% else %}
+          <input type="hidden" name="proxy" value="{{ proxies[0].id }}"><span class="mono">{{ proxies[0].name }}</span>
           {% endif %}
         </label>
         <label class="check-port">port <input name="port" type="number" value="443" min="1" max="65535"></label>
@@ -25,7 +34,9 @@
       </span>
       {% else %}
       <span class="check-controls">
-        <span class="dim">no A/AAAA addresses to check (CNAME target did not resolve)</span>
+        <span class="dim">
+          {%- if not ips %}no A/AAAA addresses to check (CNAME target did not resolve)
+          {%- else %}no check locations available — ask an admin to enable a proxy{% endif %}</span>
         <button type="button" class="btn btn-ghost" title="close" onclick="this.closest('tr').remove()">×</button>
       </span>
       {% endif %}

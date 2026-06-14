@@ -60,10 +60,16 @@ def test_host_matches_helper():
     assert not httpcheck._host_matches("evil.com", ["www.example.com"])
 
 
-def test_family_detection():
-    import socket
-    assert httpcheck._family("1.2.3.4") == socket.AF_INET
-    assert httpcheck._family("2001:db8::1") == socket.AF_INET6
+def test_unreachable_proxy_reports_proxy_error():
+    # a SOCKS5 proxy that isn't listening → proxy-error, distinct from target down
+    proxy = httpcheck.ProxySpec(host="127.0.0.1", port=1, username=None, password=None)
+    r = httpcheck.check_tcp("1.1.1.1", 443, proxy=proxy)
+    assert r["status"] == "proxy-error"
+
+
+def test_target_guard_applies_even_with_proxy():
+    proxy = httpcheck.ProxySpec(host="127.0.0.1", port=1080)
+    assert httpcheck.check_tcp("169.254.169.254", 80, proxy=proxy)["status"] == "blocked"
 
 
 def test_tcp_localhost_blocked_by_guard():

@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}proxies · mojodns{% endblock %}
+{% block content %}
+
+<div class="crumbs"><strong>check proxies</strong></div>
+
+<section class="panel">
+  <div class="panel-head"><h1>SOCKS5 proxies</h1></div>
+  <p class="hint">Check vantage points. <b>direct</b> connects from the panel itself.
+    Only <b>enabled</b> proxies are offered; a non-public one is shown to admins only.
+    Passwords are write-only — they're never displayed once saved.</p>
+  <table class="data">
+    <thead><tr><th>name</th><th>type</th><th>endpoint</th><th>auth</th>
+      <th>enabled</th><th>public</th><th class="t-right">actions</th></tr></thead>
+    <tbody>
+      {% for p in proxies %}
+      <tr>
+        <td class="mono">{{ p.name }}</td>
+        <td>{{ 'direct' if p.is_direct else 'socks5' }}</td>
+        <td class="mono dim">{% if p.is_direct %}—{% else %}{{ p.host }}:{{ p.port }}{% endif %}</td>
+        <td class="dim">{% if p.is_direct %}—{% elif p.username %}{{ p.username }}:•••{% else %}none{% endif %}</td>
+        <td><span class="status-dot st-{{ 'ok' if p.enabled else 'error' }}"></span></td>
+        <td><span class="status-dot st-{{ 'ok' if p.public_available else 'unknown' }}"></span></td>
+        <td class="t-right row-actions">
+          <a class="btn btn-ghost" href="/proxies/{{ p.id }}">edit</a>
+          {% if not p.is_direct %}
+          <form method="post" action="/proxies/{{ p.id }}/delete" class="inline"
+                onsubmit="return confirm('Delete proxy {{ p.name }}?')">
+            <button class="btn btn-ghost btn-danger" type="submit">×</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+
+<section class="panel">
+  <div class="panel-head"><h1>add a SOCKS5 proxy</h1></div>
+  <form method="post" action="/proxies" class="grid-form">
+    <label>name <input name="name" placeholder="e.g. eu-frankfurt" required></label>
+    <label>host <input name="host" placeholder="proxy.example.net" required></label>
+    <label>port <input name="port" type="number" min="1" max="65535" value="1080"></label>
+    <label>username <span class="dim">(optional)</span> <input name="username" autocomplete="off"></label>
+    <label>password <span class="dim">(optional)</span> <input name="password" type="password" autocomplete="new-password"></label>
+    <label class="check-inline"><input type="checkbox" name="enabled" value="true" checked> enabled</label>
+    <label class="check-inline"><input type="checkbox" name="public_available" value="true"> public (visible to all users)</label>
+    <button class="btn btn-primary span2" type="submit">add proxy ▸</button>
+  </form>
+</section>
+
+{% endblock %}

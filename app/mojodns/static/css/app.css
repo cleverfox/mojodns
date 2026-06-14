@@ -317,6 +317,8 @@ tr.check-panel > td { background: var(--bg-raise); padding: 12px 14px; }
 .check-head { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
 .check-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-left: auto; }
 .check-port { flex-direction: row; align-items: center; gap: 6px; }
+.check-inline { flex-direction: row; align-items: center; gap: 8px; }
+.check-inline input { width: auto; }
 .check-port input { width: 80px; }
 .check-result { margin-top: 10px; }
 .check-line { font-size: 13.5px; margin: 6px 0; }

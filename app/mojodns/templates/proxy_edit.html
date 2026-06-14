@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}{{ proxy.name }} · proxies · mojodns{% endblock %}
+{% block content %}
+
+<div class="crumbs"><a href="/proxies">proxies</a> <span>/</span> <strong>{{ proxy.name }}</strong></div>
+
+<section class="panel">
+  <div class="panel-head"><h1 class="mono">{{ proxy.name }}</h1>
+    <span class="chip">{{ 'direct' if proxy.is_direct else 'socks5' }}</span></div>
+
+  {% if proxy.is_direct %}
+  <p class="hint">The <b>direct</b> proxy connects from the panel itself — it has no host
+    or credentials. You can only change its visibility flags.</p>
+  {% endif %}
+
+  <form method="post" action="/proxies/{{ proxy.id }}" class="grid-form">
+    {% if not proxy.is_direct %}
+    <label>host <input name="host" value="{{ proxy.host or '' }}" required></label>
+    <label>port <input name="port" type="number" min="1" max="65535" value="{{ proxy.port or 1080 }}"></label>
+    <label>username <span class="dim">(optional)</span>
+      <input name="username" value="{{ proxy.username or '' }}" autocomplete="off"></label>
+    <label>password
+      <input name="password" type="password" autocomplete="new-password"
+             placeholder="{{ 'set — leave empty to keep' if proxy.password else 'not set' }}"></label>
+    {% endif %}
+    <label class="check-inline"><input type="checkbox" name="enabled" value="true"
+           {{ 'checked' if proxy.enabled }}> enabled</label>
+    <label class="check-inline"><input type="checkbox" name="public_available" value="true"
+           {{ 'checked' if proxy.public_available }}> public (visible to all users)</label>
+    <button class="btn btn-primary span2" type="submit">save ▸</button>
+  </form>
+</section>
+
+{% endblock %}

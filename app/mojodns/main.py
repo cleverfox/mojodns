@@ -13,9 +13,9 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from .config import settings
 from .csrf import CSRFMiddleware
-from .db import Base, SessionLocal, User, engine
+from .db import Base, Proxy, SessionLocal, User, engine
 from .pdns import canonical, is_custom_zone, pdns
-from .routers import api, auth, checks, ddns, pdns_compat, users, zones
+from .routers import api, auth, checks, ddns, pdns_compat, proxies, users, zones
 from .security import hash_password
 from .verify import check_zones, store_results, summarize
 
@@ -44,6 +44,12 @@ def bootstrap() -> None:
                 log.info("Bootstrap: created user 'admin' with password from BOOTSTRAP_ADMIN_PASSWORD")
             else:
                 log.warning("Bootstrap: created user 'admin' with password: %s", password)
+        # ensure the 'direct' pseudo-proxy exists (enabled + public, i.e. the
+        # current "check from the panel" behaviour available to everyone)
+        if not db.execute(select(Proxy.id).where(Proxy.is_direct.is_(True))).first():
+            db.add(Proxy(name="direct", is_direct=True, enabled=True, public_available=True))
+            db.commit()
+            log.info("Bootstrap: created the 'direct' proxy")
 
     for attempt in range(30):
         try:
@@ -119,3 +125,4 @@ app.include_router(api.router)
 app.include_router(pdns_compat.router)
 app.include_router(ddns.router)
 app.include_router(checks.router)
+app.include_router(proxies.router)

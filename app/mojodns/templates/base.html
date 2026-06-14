@@ -22,7 +22,7 @@
   <nav class="topbar-nav">
     <a href="/zones">zones</a>
     <a href="/certs">certs</a>
-    {% if user.is_admin %}<a href="/users">users</a>{% endif %}
+    {% if user.is_admin %}<a href="/users">users</a><a href="/proxies">proxies</a>{% endif %}
     <a href="/howto">how to use</a>
     <span class="topbar-user">
       <span class="dot dot-ok"></span>{{ user.login }}{% if user.is_admin %} <em>· admin</em>{% endif %}

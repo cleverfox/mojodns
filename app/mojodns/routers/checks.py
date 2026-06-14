@@ -12,13 +12,14 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..config import settings
-from ..db import CertObservation, User, ZoneAccess, get_db, log_history
+from ..db import CertObservation, Proxy, User, ZoneAccess, get_db, log_history
 from ..deps import current_user, zone_guard
 from ..httpcheck import check_http, check_https, check_tcp
 from ..idn import to_unicode
 from ..netguard import is_public_ip
 from ..pdns import PdnsError, canonical, pdns
 from ..templating import render
+from ..routers.proxies import proxy_spec, visible_proxies
 from .. import ratelimit
 
 router = APIRouter()
@@ -74,21 +75,29 @@ def _slug(*parts: str) -> str:
 
 @router.post("/zones/{zone}/checks")
 def check_panel(request: Request, host: str = Query(...), ip: str = Query(None),
-                zone: str = Depends(zone_guard), user: User = Depends(current_user)):
+                zone: str = Depends(zone_guard), user: User = Depends(current_user),
+                db: Session = Depends(get_db)):
     ips = _check_targets(zone, host)
     sel = ip if ip in ips else (ips[0] if ips else None)
+    proxies = visible_proxies(db, user)
     return render(request, "partials/check_panel.html", user=user, zone=zone,
                   host=host, hostdisp=to_unicode(host.rstrip(".")), ips=ips,
-                  sel=sel, slug=_slug(host))
+                  sel=sel, slug=_slug(host), proxies=proxies)
 
 
 @router.post("/zones/{zone}/check")
 def run_check(request: Request, kind: str = Query(...), host: str = Query(...),
               ip: str = Form(...), port: int = Form(443, ge=1, le=65535),
+              proxy: int = Form(...),
               zone: str = Depends(zone_guard), user: User = Depends(current_user),
               db: Session = Depends(get_db)):
     if ip not in _check_targets(zone, host):
         raise HTTPException(status_code=404)
+    # the location must be one this user is actually allowed to see/use
+    chosen = next((p for p in visible_proxies(db, user) if p.id == proxy), None)
+    if chosen is None:
+        raise HTTPException(status_code=404)
+    spec = proxy_spec(chosen)
 
     limit = user.check_rate_limit if user.check_rate_limit is not None else settings().default_check_rate_limit
     ok, retry = ratelimit.allow(user.id, limit)
@@ -97,24 +106,24 @@ def run_check(request: Request, kind: str = Query(...), host: str = Query(...),
                   "status": "rate-limited",
                   "detail": f"rate limit reached ({limit}/min) — wait {retry}s"}
         return render(request, "partials/check_result.html", user=user, zone=zone,
-                      host=host, ip=ip, result=result)
+                      host=host, ip=ip, result=result, location=chosen.name)
 
     if kind == "tcp":
-        result = check_tcp(ip, port)
+        result = check_tcp(ip, port, proxy=spec)
     elif kind == "http":
-        result = check_http(ip, host)
+        result = check_http(ip, host, proxy=spec)
     elif kind == "https":
-        result = check_https(ip, host)
+        result = check_https(ip, host, proxy=spec)
         _store_cert(db, zone, host, ip, result)
         log_history(db, user.id, "zone", zone,
-                    f"HTTPS check {host} ({ip}): {result['status']}"
+                    f"HTTPS check {host} ({ip}) via {chosen.name}: {result['status']}"
                     + (f", cert {result['cert'].get('days_left')}d left"
                        if isinstance(result.get("cert"), dict) and result["cert"].get("days_left") is not None else ""))
     else:
         raise HTTPException(status_code=400, detail="unknown check kind")
 
     return render(request, "partials/check_result.html", user=user, zone=zone,
-                  host=host, ip=ip, result=result)
+                  host=host, ip=ip, result=result, location=chosen.name)
 
 
 def _store_cert(db: Session, zone: str, host: str, ip: str, result: dict) -> None:

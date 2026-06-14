@@ -80,3 +80,20 @@ CREATE TABLE api_tokens (
   expires_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- SOCKS5 proxies used as check vantage points, plus the 'direct' pseudo-proxy.
+-- password is stored (needed to auth to the proxy) but never shown in the UI.
+CREATE TABLE proxies (
+  id               BIGSERIAL PRIMARY KEY,
+  name             VARCHAR(255) NOT NULL UNIQUE,
+  is_direct        BOOLEAN NOT NULL DEFAULT false,
+  host             VARCHAR(255),
+  port             INTEGER,
+  username         VARCHAR(255),
+  password         VARCHAR(255),
+  enabled          BOOLEAN NOT NULL DEFAULT true,
+  public_available BOOLEAN NOT NULL DEFAULT false,
+  created_at       TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+INSERT INTO proxies (name, is_direct, enabled, public_available)
+  VALUES ('direct', true, true, true);

@@ -99,6 +99,27 @@ class ApiToken(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+class Proxy(Base):
+    """A check vantage point: a SOCKS5 proxy, or the pseudo-proxy 'direct'
+    (is_direct=True, no host) which connects from the panel itself.
+
+    Visibility: only `enabled` proxies are usable; a non-public one
+    (public_available=False) is offered to admins only. The password is stored
+    so we can authenticate to the proxy, but is never rendered back to the UI."""
+    __tablename__ = "proxies"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    name: Mapped[str] = mapped_column(String(255), unique=True)
+    is_direct: Mapped[bool] = mapped_column(default=False)
+    host: Mapped[str | None] = mapped_column(String(255))
+    port: Mapped[int | None] = mapped_column()
+    username: Mapped[str | None] = mapped_column(String(255))
+    password: Mapped[str | None] = mapped_column(String(255))
+    enabled: Mapped[bool] = mapped_column(default=True)
+    public_available: Mapped[bool] = mapped_column(default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 engine = create_engine(settings().database_url, pool_pre_ping=True)
 SessionLocal = sessionmaker(bind=engine, expire_on_commit=False)
 

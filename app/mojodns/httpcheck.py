@@ -5,20 +5,39 @@
   check_https — TLS to ip:443 with SNI=<record name>, capture the peer cert
                 *even if invalid*, analyze it, then do the HTTP request anyway
 
-All best-effort and time-bounded. IPv6 literals are handled (the panel needs
-IPv6 egress for AAAA targets).
+Each check connects either directly (proxy=None) or through a SOCKS5 proxy, so
+the same probe can run from different vantage points. All best-effort and
+time-bounded. IPv6 literals are handled.
 """
 
 import datetime as dt
 import socket
 import ssl
 import time
+from typing import NamedTuple
 
+import socks  # PySocks
 from cryptography import x509
 from cryptography.x509.oid import ExtensionOID, NameOID
 
 from .config import settings
 from .netguard import is_public_ip
+
+
+class ProxySpec(NamedTuple):
+    """A SOCKS5 vantage point. `None` everywhere means connect directly."""
+    host: str
+    port: int
+    username: str | None = None
+    password: str | None = None
+
+
+class ConnectError(Exception):
+    """Normalised connect failure carrying a check status + human detail."""
+    def __init__(self, status: str, detail: str):
+        self.status = status
+        self.detail = detail
+        super().__init__(detail)
 
 
 def _timeout() -> float:
@@ -30,8 +49,49 @@ def _blocked(ip: str) -> bool:
     return not settings().check_allow_private and not is_public_ip(ip)
 
 
-def _family(ip: str) -> int:
-    return socket.AF_INET6 if ":" in ip else socket.AF_INET
+def _connect(ip: str, port: int, proxy: ProxySpec | None):
+    """Open a TCP connection to ip:port, directly or via a SOCKS5 proxy.
+
+    Raises ConnectError with a normalised status: refused / timeout / error
+    (target side) or proxy-error (the proxy itself is unreachable / rejected us).
+    The is_public_ip guard still applies to the *target* (the proxy must not be
+    turned into a scanner of its own network)."""
+    timeout = _timeout()
+    if proxy is None:
+        try:
+            return socket.create_connection((ip, port), timeout=timeout)
+        except ConnectionRefusedError:
+            raise ConnectError("refused", "connection refused")
+        except (socket.timeout, TimeoutError):
+            raise ConnectError("timeout", "timed out")
+        except OSError as e:
+            raise ConnectError("error", str(e))
+    s = socks.socksocket()
+    s.set_proxy(socks.SOCKS5, proxy.host, proxy.port,
+                username=proxy.username or None, password=proxy.password or None,
+                rdns=False)  # we pass a resolved IP; don't have the proxy resolve
+    s.settimeout(timeout)
+    try:
+        s.connect((ip, port))
+        return s
+    except socks.SOCKS5AuthError as e:
+        raise ConnectError("proxy-error", f"proxy auth failed: {e}")
+    except socks.ProxyConnectionError as e:
+        raise ConnectError("proxy-error", f"cannot reach proxy: {e}")
+    except socks.SOCKS5Error as e:
+        msg = str(e)
+        low = msg.lower()
+        if "refused" in low:
+            raise ConnectError("refused", "connection refused (via proxy)")
+        if "ttl expired" in low or "unreachable" in low:
+            raise ConnectError("timeout", f"unreachable via proxy: {msg}")
+        raise ConnectError("error", f"via proxy: {msg}")
+    except socks.GeneralProxyError as e:
+        raise ConnectError("proxy-error", f"proxy error: {e}")
+    except (socket.timeout, TimeoutError):
+        raise ConnectError("timeout", "timed out")
+    except OSError as e:
+        raise ConnectError("error", str(e))
 
 
 def _http_request(sock, host: str) -> dict:
@@ -68,40 +128,33 @@ def _http_request(sock, host: str) -> dict:
             "detail": None}
 
 
-def check_tcp(ip: str, port: int) -> dict:
+def check_tcp(ip: str, port: int, proxy: ProxySpec | None = None) -> dict:
     if _blocked(ip):
         return {"kind": "tcp", "ip": ip, "port": port, "status": "blocked",
                 "detail": "non-public address blocked"}
     t0 = time.monotonic()
     try:
-        with socket.create_connection((ip, port), timeout=_timeout()):
+        with _connect(ip, port, proxy):
             return {"kind": "tcp", "ip": ip, "port": port, "status": "ok",
                     "latency_ms": round((time.monotonic() - t0) * 1000),
                     "detail": "connection established"}
-    except (ConnectionRefusedError,) as e:
-        return {"kind": "tcp", "ip": ip, "port": port, "status": "refused", "detail": "connection refused"}
-    except (socket.timeout, TimeoutError):
-        return {"kind": "tcp", "ip": ip, "port": port, "status": "timeout", "detail": "timed out"}
-    except OSError as e:
-        return {"kind": "tcp", "ip": ip, "port": port, "status": "error", "detail": str(e)}
+    except ConnectError as e:
+        return {"kind": "tcp", "ip": ip, "port": port, "status": e.status, "detail": e.detail}
 
 
-def check_http(ip: str, host: str, port: int = 80) -> dict:
+def check_http(ip: str, host: str, port: int = 80, proxy: ProxySpec | None = None) -> dict:
     host = host.rstrip(".")  # SNI / Host header / cert names carry no trailing dot
     if _blocked(ip):
         return {"kind": "http", "ip": ip, "host": host, "port": port,
                 "status": "blocked", "detail": "non-public address blocked"}
     t0 = time.monotonic()
     try:
-        with socket.create_connection((ip, port), timeout=_timeout()) as s:
+        with _connect(ip, port, proxy) as s:
             s.settimeout(_timeout())
             r = _http_request(s, host)
-    except (ConnectionRefusedError,):
-        return {"kind": "http", "ip": ip, "host": host, "port": port, "status": "refused", "detail": "connection refused"}
-    except (socket.timeout, TimeoutError):
-        return {"kind": "http", "ip": ip, "host": host, "port": port, "status": "timeout", "detail": "timed out"}
-    except OSError as e:
-        return {"kind": "http", "ip": ip, "host": host, "port": port, "status": "error", "detail": str(e)}
+    except ConnectError as e:
+        return {"kind": "http", "ip": ip, "host": host, "port": port,
+                "status": e.status, "detail": e.detail}
     status = "ok" if r["http_status"] else "error"
     return {"kind": "http", "ip": ip, "host": host, "port": port, "status": status,
             "latency_ms": round((time.monotonic() - t0) * 1000), **r}
@@ -162,7 +215,7 @@ def _analyze_cert(der: bytes, host: str) -> dict:
     }
 
 
-def check_https(ip: str, host: str, port: int = 443) -> dict:
+def check_https(ip: str, host: str, port: int = 443, proxy: ProxySpec | None = None) -> dict:
     host = host.rstrip(".")  # SNI / Host header / cert names carry no trailing dot
     if _blocked(ip):
         return {"kind": "https", "ip": ip, "host": host, "port": port,
@@ -183,13 +236,9 @@ def check_https(ip: str, host: str, port: int = 443) -> dict:
     ctx.check_hostname = False
     ctx.verify_mode = ssl.CERT_NONE
     try:
-        raw = socket.create_connection((ip, port), timeout=_timeout())
-    except (ConnectionRefusedError,):
-        out["status"] = "refused"; out["detail"] = "connection refused"; return out
-    except (socket.timeout, TimeoutError):
-        out["status"] = "timeout"; out["detail"] = "timed out"; return out
-    except OSError as e:
-        out["status"] = "error"; out["detail"] = str(e); return out
+        raw = _connect(ip, port, proxy)
+    except ConnectError as e:
+        out["status"] = e.status; out["detail"] = e.detail; return out
     try:
         with ctx.wrap_socket(raw, server_hostname=host) as tls:
             tls.settimeout(_timeout())
@@ -207,13 +256,12 @@ def check_https(ip: str, host: str, port: int = 443) -> dict:
     except OSError as e:
         out["status"] = "error"; out["detail"] = str(e); return out
 
-    # 2) best-effort verifying handshake → trust verdict
+    # 2) best-effort verifying handshake → trust verdict (through the same proxy)
     trusted, trust_error = False, None
     try:
         vctx = ssl.create_default_context()
-        with socket.create_connection((ip, port), timeout=_timeout()) as vraw:
-            with vctx.wrap_socket(vraw, server_hostname=host):
-                trusted = True
+        with vctx.wrap_socket(_connect(ip, port, proxy), server_hostname=host):
+            trusted = True
     except ssl.SSLCertVerificationError as e:
         trust_error = e.verify_message or str(e)
     except Exception as e:
