@@ -46,7 +46,7 @@ def login(
     return RedirectResponse("/zones", status_code=303)
 
 
-@router.get("/logout")
+@router.post("/logout")
 def logout(request: Request):
     request.session.clear()
     return RedirectResponse("/login", status_code=303)

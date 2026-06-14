@@ -57,6 +57,14 @@ class Settings(BaseSettings):
 
     # timeout (seconds) for per-record TCP/HTTP/HTTPS reachability checks
     check_timeout: float = 6.0
+    # allow probing non-public (loopback/private/link-local) addresses. Off by
+    # default — keeping it off prevents the checks/DNS-server poll from being
+    # used as an internal port-scanner (SSRF). Enable only for an isolated,
+    # internal-by-design deployment.
+    check_allow_private: bool = False
+    # default per-user rate limit (requests/minute) for outbound-probe actions
+    # (per-record checks + "check DNS servers"); per-user override on the User row
+    default_check_rate_limit: int = 2
 
     @property
     def verify_resolver_list(self) -> list[str]:

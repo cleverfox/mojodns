@@ -306,6 +306,8 @@ pre.zone-dump { max-height: 70vh; overflow: auto; font-size: 12px; }
 .st-unknown  { background: transparent; border: 1px solid var(--line); }
 .st-stale    { background: var(--amber); box-shadow: 0 0 6px rgba(255,180,84,.7); }
 .st-down     { background: var(--danger); box-shadow: 0 0 6px rgba(255,107,94,.7); }
+.st-skipped  { background: transparent; border: 1px solid var(--line); }
+.st-blocked  { background: var(--danger); box-shadow: 0 0 6px rgba(255,107,94,.7); }
 
 .htmx-indicator { display: none; }
 .htmx-request .htmx-indicator, .htmx-request.htmx-indicator { display: inline; }

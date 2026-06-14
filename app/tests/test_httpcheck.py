@@ -66,7 +66,14 @@ def test_family_detection():
     assert httpcheck._family("2001:db8::1") == socket.AF_INET6
 
 
-def test_tcp_refused_localhost():
-    # nothing listens on this high port → refused or timeout, never ok
+def test_tcp_localhost_blocked_by_guard():
+    # the SSRF guard rejects non-public targets before any socket is opened
     r = httpcheck.check_tcp("127.0.0.1", 59999)
-    assert r["status"] in ("refused", "timeout", "error")
+    assert r["status"] == "blocked"
+
+
+def test_tcp_private_and_metadata_blocked():
+    for ip in ("169.254.169.254", "10.0.0.1", "192.168.1.1", "::1"):
+        assert httpcheck.check_tcp(ip, 80)["status"] == "blocked"
+        assert httpcheck.check_http(ip, "example.com")["status"] == "blocked"
+        assert httpcheck.check_https(ip, "example.com")["status"] == "blocked"

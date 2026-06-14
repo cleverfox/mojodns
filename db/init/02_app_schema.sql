@@ -11,6 +11,8 @@ CREATE TABLE app_users (
   role          VARCHAR(16)  NOT NULL DEFAULT 'owner'
                 CHECK (role IN ('admin', 'owner')),
   state         VARCHAR(16)  NOT NULL DEFAULT 'active',
+  -- per-minute cap on outbound-probe actions; NULL = use the global default
+  check_rate_limit INTEGER,
   created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );

@@ -27,9 +27,15 @@ import dns.rdatatype
 import dns.resolver
 
 from .config import settings
+from .netguard import is_public_ip
 from .pdns import canonical, pdns
 
 log = logging.getLogger("mojodns.slaves")
+
+
+def _addr_ok(addr: str) -> bool:
+    """Whether the panel may send a query to this resolved address (SSRF guard)."""
+    return settings().check_allow_private or is_public_ip(addr)
 
 
 def _resolver() -> dns.resolver.Resolver:
@@ -88,8 +94,13 @@ def check_slaves(zone: str, master_serial: int | None, workers: int = 8) -> list
         if not addrs:
             rows.append({"ns": ns, "addr": None, "serial": None,
                          "status": "down", "detail": "no IPv4 / unresolvable"})
-        else:
-            targets += [(ns, a) for a in addrs]
+            continue
+        for a in addrs:
+            if _addr_ok(a):
+                targets.append((ns, a))
+            else:
+                rows.append({"ns": ns, "addr": a, "serial": None,
+                             "status": "skipped", "detail": "non-public address"})
 
     def run(t: tuple[str, str]) -> dict:
         ns, addr = t
@@ -113,7 +124,7 @@ def summarize(rows: list[dict]) -> str:
     c: dict[str, int] = {}
     for r in rows:
         c[r["status"]] = c.get(r["status"], 0) + 1
-    return ", ".join(f"{c[s]} {s}" for s in ("ok", "stale", "down") if s in c) or "no nameservers"
+    return ", ".join(f"{c[s]} {s}" for s in ("ok", "stale", "down", "skipped") if s in c) or "no nameservers"
 
 
 def _parent_zone(zone: str) -> str | None:
@@ -166,6 +177,8 @@ def check_delegation(zone: str, zone_ns: list[str]) -> dict:
     delegated: set[str] | None = None
     for name in parent_ns:
         for ip in _a_records(name):
+            if not _addr_ok(ip):
+                continue
             found = _ns_at_server(ip, zone)
             if found:
                 delegated = found

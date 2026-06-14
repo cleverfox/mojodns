@@ -7,7 +7,7 @@ import re
 from datetime import datetime, timezone
 
 import dns.resolver
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -16,8 +16,10 @@ from ..db import CertObservation, User, ZoneAccess, get_db, log_history
 from ..deps import current_user, zone_guard
 from ..httpcheck import check_http, check_https, check_tcp
 from ..idn import to_unicode
+from ..netguard import is_public_ip
 from ..pdns import PdnsError, canonical, pdns
 from ..templating import render
+from .. import ratelimit
 
 router = APIRouter()
 
@@ -59,6 +61,10 @@ def _check_targets(zone: str, host: str) -> list[str]:
             cname = rr["records"][0]["content"]
     if not ips and cname:
         ips = _resolve_ips(cname)
+    # never offer non-public targets (SSRF guard); re-applied here AFTER CNAME
+    # resolution so a rebind to a private address can't slip through
+    if not settings().check_allow_private:
+        ips = [ip for ip in ips if is_public_ip(ip)]
     return ips
 
 
@@ -66,7 +72,7 @@ def _slug(*parts: str) -> str:
     return "cr-" + re.sub(r"[^a-z0-9]+", "-", "-".join(parts).lower()).strip("-")
 
 
-@router.get("/zones/{zone}/checks")
+@router.post("/zones/{zone}/checks")
 def check_panel(request: Request, host: str = Query(...), ip: str = Query(None),
                 zone: str = Depends(zone_guard), user: User = Depends(current_user)):
     ips = _check_targets(zone, host)
@@ -76,13 +82,22 @@ def check_panel(request: Request, host: str = Query(...), ip: str = Query(None),
                   sel=sel, slug=_slug(host))
 
 
-@router.get("/zones/{zone}/check")
+@router.post("/zones/{zone}/check")
 def run_check(request: Request, kind: str = Query(...), host: str = Query(...),
-              ip: str = Query(...), port: int = Query(443, ge=1, le=65535),
+              ip: str = Form(...), port: int = Form(443, ge=1, le=65535),
               zone: str = Depends(zone_guard), user: User = Depends(current_user),
               db: Session = Depends(get_db)):
     if ip not in _check_targets(zone, host):
         raise HTTPException(status_code=404)
+
+    limit = user.check_rate_limit if user.check_rate_limit is not None else settings().default_check_rate_limit
+    ok, retry = ratelimit.allow(user.id, limit)
+    if not ok:
+        result = {"kind": kind, "ip": ip, "host": host, "port": port,
+                  "status": "rate-limited",
+                  "detail": f"rate limit reached ({limit}/min) — wait {retry}s"}
+        return render(request, "partials/check_result.html", user=user, zone=zone,
+                      host=host, ip=ip, result=result)
 
     if kind == "tcp":
         result = check_tcp(ip, port)

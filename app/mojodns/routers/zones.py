@@ -17,6 +17,7 @@ from ..axfr import AxfrError, ZoneParseError, axfr_text, parse_zone_text
 from ..slaves import apex_ns, check_delegation, check_slaves, summarize as slave_summary
 from ..notifier import notify_zone, parse_targets
 from ..templating import flash, render
+from .. import ratelimit
 from ..verify import check_zone, check_zones, load_checks, store_results, summarize
 
 router = APIRouter()
@@ -721,9 +722,16 @@ def zone_axfr(request: Request, raw: int = 0, zone: str = Depends(zone_guard),
                   zone_display=to_unicode(zone.rstrip(".")), text=text, count=count)
 
 
-@router.get("/zones/{zone}/servers")
+@router.post("/zones/{zone}/servers")
 def zone_servers(request: Request, zone: str = Depends(zone_guard),
                  user: User = Depends(current_user), db: Session = Depends(get_db)):
+    s = settings()
+    limit = user.check_rate_limit if user.check_rate_limit is not None else s.default_check_rate_limit
+    ok, retry = ratelimit.allow(user.id, limit)
+    if not ok:
+        return render(request, "partials/server_results.html", user=user, zone=zone,
+                      master_serial=None, rows=[], delegation=None,
+                      error=f"Rate limit reached ({limit}/min) — wait {retry}s")
     try:
         zdata = pdns.get_zone(zone)
     except PdnsError as e:

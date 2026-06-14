@@ -26,6 +26,9 @@
     </label>
     <label class="span2">new password <input name="password" type="password"
            placeholder="leave empty to keep current"></label>
+    <label class="span2">check rate limit <span class="dim">(probes/min; blank = default {{ default_check_rate_limit }})</span>
+      <input name="check_rate_limit" type="number" min="0" value="{{ target.check_rate_limit if target.check_rate_limit is not none else '' }}"
+             placeholder="default {{ default_check_rate_limit }}"></label>
     <button class="btn btn-primary span2" type="submit">save ▸</button>
   </form>
 </section>

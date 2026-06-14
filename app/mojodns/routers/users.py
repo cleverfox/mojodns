@@ -3,6 +3,7 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from ..config import settings
 from ..db import ApiToken, HistoryEntry, User, ZoneAccess, get_db, log_history
 from ..deps import require_admin
 from ..security import hash_password, make_token
@@ -65,7 +66,7 @@ def user_edit(request: Request, uid: int, admin: User = Depends(require_admin),
     return render(request, "user_edit.html", user=admin, target=target,
                   owned=[g.zone for g in grants if g.is_owner],
                   granted=[g.zone for g in grants if not g.is_owner],
-                  tokens=tokens)
+                  tokens=tokens, default_check_rate_limit=settings().default_check_rate_limit)
 
 
 @router.post("/{uid}")
@@ -75,12 +76,15 @@ def user_update(
     email: str = Form(""),
     role: str = Form("owner"),
     password: str = Form(""),
+    check_rate_limit: str = Form(""),
     admin: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
     target = _load_user(db, uid)
     target.email = email.strip() or None
     target.role = "admin" if role == "admin" else "owner"
+    rl = check_rate_limit.strip()
+    target.check_rate_limit = max(0, int(rl)) if rl.isdigit() else None
     log_history(db, admin.id, "user", target.login, "Update user profile")
     if password:
         target.password_hash = hash_password(password)

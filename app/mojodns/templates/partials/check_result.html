@@ -1,4 +1,4 @@
-{% set st = {'ok':'ok','tls-only':'partial','refused':'down','timeout':'down','error':'error'}.get(result.status, 'error') %}
+{% set st = {'ok':'ok','tls-only':'partial','refused':'down','timeout':'down','blocked':'blocked','rate-limited':'partial','error':'error'}.get(result.status, 'error') %}
 <div class="check-line">
   <span class="status-dot st-{{ st }}"></span>
   <b>{{ result.kind|upper }}</b>

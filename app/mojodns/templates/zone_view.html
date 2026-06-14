@@ -39,7 +39,7 @@
     <a class="btn btn-ghost" href="/zones/{{ zone|bare }}/axfr"
        title="AXFR the zone and show it as text">view zone ≡</a>
     <button class="btn btn-ghost"
-            hx-get="/zones/{{ zone|bare }}/servers" hx-target="#server-results" hx-indicator="#server-spin"
+            hx-post="/zones/{{ zone|bare }}/servers" hx-target="#server-results" hx-indicator="#server-spin"
             onclick="document.getElementById('dns-servers-panel').style.display=''"
             title="check the parent delegation and poll each published nameserver's SOA serial">
       check DNS servers ⟲</button>

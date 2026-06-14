@@ -18,10 +18,16 @@ from cryptography import x509
 from cryptography.x509.oid import ExtensionOID, NameOID
 
 from .config import settings
+from .netguard import is_public_ip
 
 
 def _timeout() -> float:
     return settings().check_timeout
+
+
+def _blocked(ip: str) -> bool:
+    """True if this target must not be probed (non-public, guard enabled)."""
+    return not settings().check_allow_private and not is_public_ip(ip)
 
 
 def _family(ip: str) -> int:
@@ -63,6 +69,9 @@ def _http_request(sock, host: str) -> dict:
 
 
 def check_tcp(ip: str, port: int) -> dict:
+    if _blocked(ip):
+        return {"kind": "tcp", "ip": ip, "port": port, "status": "blocked",
+                "detail": "non-public address blocked"}
     t0 = time.monotonic()
     try:
         with socket.create_connection((ip, port), timeout=_timeout()):
@@ -79,6 +88,9 @@ def check_tcp(ip: str, port: int) -> dict:
 
 def check_http(ip: str, host: str, port: int = 80) -> dict:
     host = host.rstrip(".")  # SNI / Host header / cert names carry no trailing dot
+    if _blocked(ip):
+        return {"kind": "http", "ip": ip, "host": host, "port": port,
+                "status": "blocked", "detail": "non-public address blocked"}
     t0 = time.monotonic()
     try:
         with socket.create_connection((ip, port), timeout=_timeout()) as s:
@@ -152,6 +164,11 @@ def _analyze_cert(der: bytes, host: str) -> dict:
 
 def check_https(ip: str, host: str, port: int = 443) -> dict:
     host = host.rstrip(".")  # SNI / Host header / cert names carry no trailing dot
+    if _blocked(ip):
+        return {"kind": "https", "ip": ip, "host": host, "port": port,
+                "status": "blocked", "tls_ok": False, "cert": None,
+                "http_status": None, "server": None, "location": None,
+                "detail": "non-public address blocked"}
     t0 = time.monotonic()
     out = {"kind": "https", "ip": ip, "host": host, "port": port,
            "status": "error", "tls_ok": False, "cert": None,

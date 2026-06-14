@@ -8,10 +8,11 @@ from pathlib import Path
 import anyio
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
-from sqlalchemy import select
+from sqlalchemy import select, text
 from starlette.middleware.sessions import SessionMiddleware
 
 from .config import settings
+from .csrf import CSRFMiddleware
 from .db import Base, SessionLocal, User, engine
 from .pdns import canonical, is_custom_zone, pdns
 from .routers import api, auth, checks, ddns, pdns_compat, users, zones
@@ -22,9 +23,18 @@ log = logging.getLogger("mojodns")
 logging.basicConfig(level=logging.INFO)
 
 
+def _migrate() -> None:
+    """Lightweight additive migrations for existing DBs — create_all only makes
+    missing *tables*, not new columns. Each statement is idempotent."""
+    with engine.begin() as conn:
+        conn.execute(text(
+            "ALTER TABLE app_users ADD COLUMN IF NOT EXISTS check_rate_limit integer"))
+
+
 def bootstrap() -> None:
     """Create the first admin and the catalog producer zone."""
     Base.metadata.create_all(bind=engine)  # additive only; init.sql covers fresh DBs
+    _migrate()
     with SessionLocal() as db:
         if not db.execute(select(User.id).limit(1)).first():
             password = settings().bootstrap_admin_password or secrets.token_urlsafe(12)
@@ -90,6 +100,9 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="mojodns", lifespan=lifespan)
+# Middleware order: the LAST added is outermost. Add CSRF first so it sits
+# INNER to SessionMiddleware (it needs scope["session"] populated).
+app.add_middleware(CSRFMiddleware)
 app.add_middleware(
     SessionMiddleware,
     secret_key=settings().session_secret,

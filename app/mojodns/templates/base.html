@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="csrf-token" content="{{ csrf_token }}">
   <title>{% block title %}mojodns{% endblock %}</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -26,7 +27,10 @@
     <span class="topbar-user">
       <span class="dot dot-ok"></span>{{ user.login }}{% if user.is_admin %} <em>· admin</em>{% endif %}
     </span>
-    <a class="btn btn-ghost" href="/logout">log out</a>
+    <form method="post" action="/logout" class="inline">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button class="btn btn-ghost" type="submit">log out</button>
+    </form>
   </nav>
 </header>
 {% endif %}
@@ -46,6 +50,22 @@
 <footer class="foot">mojodns</footer>
 
 <script>
+  // attach the CSRF token to every HTMX request (validated by the server)
+  document.body.addEventListener('htmx:configRequest', function (e) {
+    var m = document.querySelector('meta[name=csrf-token]');
+    if (m) e.detail.headers['X-CSRF-Token'] = m.content;
+  });
+  // …and to every plain POST form, so the token rides in the request body
+  document.addEventListener('submit', function (e) {
+    var f = e.target;
+    if (!f || (f.method || '').toLowerCase() !== 'post') return;
+    if (f.querySelector('input[name=csrf_token]')) return;
+    var m = document.querySelector('meta[name=csrf-token]');
+    if (!m) return;
+    var i = document.createElement('input');
+    i.type = 'hidden'; i.name = 'csrf_token'; i.value = m.content;
+    f.appendChild(i);
+  });
   // live filter for tables: <input data-filter="#table-id">
   document.addEventListener('input', function (e) {
     var sel = e.target.getAttribute && e.target.getAttribute('data-filter');

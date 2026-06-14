@@ -19,6 +19,9 @@ class User(Base):
     password_hash: Mapped[str] = mapped_column(String(255))
     role: Mapped[str] = mapped_column(String(16), default="owner")
     state: Mapped[str] = mapped_column(String(16), default="active")
+    # per-minute cap on outbound-probe actions (checks / DNS-server poll);
+    # NULL ⇒ use settings.default_check_rate_limit
+    check_rate_limit: Mapped[int | None] = mapped_column(default=None)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
