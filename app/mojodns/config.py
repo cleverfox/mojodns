@@ -10,6 +10,9 @@ class Settings(BaseSettings):
     pdns_server_id: str = "localhost"
 
     session_secret: str = "dev-secret-change-me"
+    # mark the session cookie Secure (HTTPS-only). Default off so dev over plain
+    # HTTP works; set COOKIE_SECURE=true in any TLS-fronted deployment.
+    cookie_secure: bool = False
 
     catalog_zone: str = "catalog.mojodns."
     # Primary TSIG key: its name is allowed for AXFR on every zone, and the
@@ -65,6 +68,8 @@ class Settings(BaseSettings):
     # default per-user rate limit (requests/minute) for outbound-probe actions
     # (per-record checks + "check DNS servers"); per-user override on the User row
     default_check_rate_limit: int = 2
+    # per-source-IP cap on login attempts/minute (brute-force throttle; 0 = off)
+    login_rate_limit: int = 10
 
     @property
     def verify_resolver_list(self) -> list[str]:

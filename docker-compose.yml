@@ -72,6 +72,7 @@ services:
       PDNS_API_URL: http://pdns:8081/api/v1
       PDNS_API_KEY: ${PDNS_API_KEY}
       SESSION_SECRET: ${SESSION_SECRET:?set in .env}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
       CATALOG_ZONE: ${CATALOG_ZONE:-catalog.mojodns.}
       DEFAULT_SOA_NS: ${DEFAULT_SOA_NS:-ns1.example.net.}
       DEFAULT_SOA_MAIL: ${DEFAULT_SOA_MAIL:-hostmaster.example.net.}
@@ -85,6 +86,9 @@ services:
       PDNS_AXFR_PORT: 1053
       VERIFY_RESOLVERS: ${VERIFY_RESOLVERS:-1.1.1.1,8.8.8.8}
       VERIFY_INTERVAL_HOURS: ${VERIFY_INTERVAL_HOURS:-24}
+      # IPs uvicorn trusts X-Forwarded-* from — the reverse proxy only, never '*'.
+      # In compose this is the dnsnet gateway the published-port traffic is SNAT'd to.
+      FORWARDED_ALLOW_IPS: ${FORWARDED_ALLOW_IPS:-10.89.99.1}
     ports:
       - "${WEB_PORT:-8000}:8000"
     restart: unless-stopped

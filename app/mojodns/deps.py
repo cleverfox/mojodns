@@ -46,6 +46,22 @@ def can_access_zone(db: Session, user: User, zone: str) -> bool:
     )
 
 
+def is_zone_owner(db: Session, user: User, zone: str) -> bool:
+    """True if the user owns the zone (or is an admin). Owning is required to
+    manage the zone's access list."""
+    if user.is_admin:
+        return True
+    return (
+        db.execute(
+            select(ZoneAccess.id).where(
+                ZoneAccess.user_id == user.id, ZoneAccess.zone == canonical(zone),
+                ZoneAccess.is_owner.is_(True),
+            )
+        ).first()
+        is not None
+    )
+
+
 def zone_guard(zone: str, user: User = Depends(current_user), db: Session = Depends(get_db)) -> str:
     """Path-param dependency: returns the canonical zone name or 404s."""
     czone = canonical(zone)

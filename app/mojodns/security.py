@@ -17,6 +17,12 @@ def hash_password(password: str) -> str:
     return "bcrypt$" + bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
 
 
+# A throwaway hash to verify against when the account doesn't exist, so a failed
+# login costs the same bcrypt work whether or not the user is real (defeats the
+# username-enumeration timing oracle). Computed once at import.
+DUMMY_PASSWORD_HASH = hash_password(secrets.token_urlsafe(16))
+
+
 def verify_password(password: str, stored: str) -> bool:
     scheme, _, rest = stored.partition("$")
     if scheme == "bcrypt":

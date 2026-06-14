@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from ..config import settings
 from ..db import HistoryEntry, User, ZoneAccess, ZoneCheck, get_db, log_history
-from ..deps import current_user, require_admin, user_zones, zone_guard
+from ..deps import current_user, is_zone_owner, require_admin, user_zones, zone_guard
 from ..dnsutil import Soa, build_content, dotted, email_to_rname, flatten_rrsets, quote_txt, split_prio
 from ..spf import is_spf, parse_spf
 from ..idn import to_ascii, to_unicode
@@ -809,12 +809,19 @@ def zone_owner_set(request: Request, uid: int, zone: str = Depends(zone_guard),
 @router.post("/zones/{zone}/access/{uid}/toggle")
 def zone_access_toggle(request: Request, uid: int, zone: str = Depends(zone_guard),
                        user: User = Depends(current_user), db: Session = Depends(get_db)):
+    # only the zone owner (or an admin) may change the access list — a delegated
+    # editor must not be able to grant/revoke others or remove the owner
+    if not is_zone_owner(db, user, zone):
+        flash(request, "Only the zone owner or an admin can change access", "error")
+        return RedirectResponse(f"/zones/{zone.rstrip('.')}/access", status_code=303)
     target = db.get(User, uid)
     if target:
         grant = db.execute(
             select(ZoneAccess).where(ZoneAccess.zone == zone, ZoneAccess.user_id == uid)
         ).scalar_one_or_none()
-        if grant:
+        if grant and grant.is_owner:
+            flash(request, "Cannot revoke the owner's access — reassign ownership first", "error")
+        elif grant:
             db.delete(grant)
             log_history(db, user.id, "zone", zone, f"Revoke access from {target.login}")
         else:

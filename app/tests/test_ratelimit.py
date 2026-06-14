@@ -23,6 +23,13 @@ def test_per_user_independent():
     assert ratelimit.allow(b, 1)[0] is True    # b unaffected
 
 
+def test_non_int_keys_supported_and_independent():
+    # login throttling keys by ("login", ip) — tuples/strings must work
+    assert ratelimit.allow(("login", "203.0.113.5"), 1)[0] is True
+    assert ratelimit.allow(("login", "203.0.113.5"), 1)[0] is False
+    assert ratelimit.allow(("login", "203.0.113.6"), 1)[0] is True  # other IP unaffected
+
+
 def test_window_expiry_reallows(monkeypatch):
     uid = 1005
     clock = {"t": 1000.0}

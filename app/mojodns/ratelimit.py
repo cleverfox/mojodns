@@ -11,12 +11,13 @@ import time
 
 WINDOW = 60.0
 
-_hits: dict[int, list[float]] = {}
+_hits: dict[object, list[float]] = {}
 _lock = threading.Lock()
 
 
-def allow(user_id: int, limit_per_min: int) -> tuple[bool, int]:
-    """Record an attempt; return (allowed, retry_after_seconds).
+def allow(key: object, limit_per_min: int) -> tuple[bool, int]:
+    """Record an attempt under `key` (a user id, or an IP string for login);
+    return (allowed, retry_after_seconds).
 
     `limit_per_min <= 0` means unlimited. When the limit is already reached the
     attempt is NOT counted and retry_after is the seconds until the oldest hit
@@ -25,11 +26,11 @@ def allow(user_id: int, limit_per_min: int) -> tuple[bool, int]:
         return True, 0
     now = time.monotonic()
     with _lock:
-        hits = [t for t in _hits.get(user_id, ()) if now - t < WINDOW]
+        hits = [t for t in _hits.get(key, ()) if now - t < WINDOW]
         if len(hits) >= limit_per_min:
             retry = max(1, int(WINDOW - (now - hits[0]) + 0.999))
-            _hits[user_id] = hits
+            _hits[key] = hits
             return False, retry
         hits.append(now)
-        _hits[user_id] = hits
+        _hits[key] = hits
         return True, 0
