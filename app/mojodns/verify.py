@@ -14,6 +14,11 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
+import dns.flags
+import dns.message
+import dns.query
+import dns.rcode
+import dns.rdatatype
 import dns.resolver
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -32,6 +37,7 @@ class CheckResult:
     configured: set[str] = field(default_factory=set)
     resolved: set[str] = field(default_factory=set)
     detail: str | None = None
+    dnssec: str | None = None
 
 
 def _resolver() -> dns.resolver.Resolver:
@@ -69,8 +75,7 @@ def classify(configured: set[str], resolved: set[str], error: str | None) -> str
     return "partial"
 
 
-def configured_ns(zone: str) -> set[str]:
-    zdata = pdns.get_zone(zone)
+def configured_ns(zdata: dict, zone: str) -> set[str]:
     return {
         canonical(rec["content"])
         for rr in zdata["rrsets"]
@@ -79,14 +84,38 @@ def configured_ns(zone: str) -> set[str]:
     }
 
 
+def dnssec_status(zone: str) -> str:
+    """What validating resolvers make of this (locally-signed) zone:
+        secure   — AD bit set: full chain of trust (DS at parent + valid sigs)
+        insecure — answers, but not authenticated: DS not published at the parent
+        bogus    — SERVFAIL from a validator: DS present but signatures don't verify
+        error    — couldn't ask any resolver
+    """
+    q = dns.message.make_query(canonical(zone), dns.rdatatype.SOA, want_dnssec=True)
+    q.flags |= dns.flags.RD | dns.flags.AD
+    for ip in settings().verify_resolver_list:
+        try:
+            r = dns.query.udp(q, ip, timeout=4.0)
+        except Exception:
+            continue
+        if r.rcode() == dns.rcode.SERVFAIL:
+            return "bogus"
+        if r.rcode() != dns.rcode.NOERROR:
+            continue
+        return "secure" if (r.flags & dns.flags.AD) else "insecure"
+    return "error"
+
+
 def check_zone(zone: str) -> CheckResult:
     zone = canonical(zone)
     try:
-        conf = configured_ns(zone)
+        zdata = pdns.get_zone(zone)
+        conf = configured_ns(zdata, zone)
     except Exception as e:
         return CheckResult(zone, "error", detail=f"pdns: {e}")
     resolved, err = resolve_ns(zone)
-    return CheckResult(zone, classify(conf, resolved, err), conf, resolved, err)
+    sec = dnssec_status(zone) if zdata.get("dnssec") else "unsigned"
+    return CheckResult(zone, classify(conf, resolved, err), conf, resolved, err, dnssec=sec)
 
 
 def check_zones(zones: list[str], workers: int = 10) -> list[CheckResult]:
@@ -103,6 +132,7 @@ def store_results(db: Session, results: list[CheckResult]) -> None:
         row.status = r.status
         row.resolved_ns = " ".join(sorted(r.resolved)) or None
         row.detail = r.detail
+        row.dnssec = r.dnssec
         row.checked_at = datetime.now(timezone.utc)
     db.flush()
 

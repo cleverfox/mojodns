@@ -59,6 +59,21 @@
     var m = document.querySelector('meta[name=csrf-token]');
     if (m) e.detail.headers['X-CSRF-Token'] = m.content;
   });
+  // click-to-copy: <button data-copy="text">… copies exactly that text
+  document.addEventListener('click', function (e) {
+    var el = e.target.closest && e.target.closest('[data-copy]');
+    if (!el) return;
+    e.preventDefault();
+    var text = el.getAttribute('data-copy');
+    var done = function () {
+      var prev = el.textContent;
+      el.textContent = 'copied ✓';
+      setTimeout(function () { el.textContent = prev; }, 1200);
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(done, function () {});
+    }
+  });
   // …and to every plain POST form, so the token rides in the request body
   document.addEventListener('submit', function (e) {
     var f = e.target;

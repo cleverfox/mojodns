@@ -69,6 +69,9 @@ class ZoneCheck(Base):
     status: Mapped[str] = mapped_column(String(16))
     resolved_ns: Mapped[str | None] = mapped_column(Text)  # space separated
     detail: Mapped[str | None] = mapped_column(String(255))
+    # DNSSEC chain status: unsigned | secure | insecure (signed, no DS at parent)
+    # | bogus (validation fails) | error; NULL until first checked
+    dnssec: Mapped[str | None] = mapped_column(String(16))
     checked_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
@@ -124,6 +127,17 @@ class Proxy(Base):
     enabled: Mapped[bool] = mapped_column(default=True)
     public_available: Mapped[bool] = mapped_column(default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class ZoneSigning(Base):
+    """Per-zone DNSSEC re-sign scheduler state. `due_at` is when the zone should
+    next be serial-bumped so the dumb secondaries re-AXFR fresh RRSIGs; it's reset
+    ~24h out whenever the zone's serial moves for any reason."""
+    __tablename__ = "zone_signing"
+
+    zone: Mapped[str] = mapped_column(String(255), primary_key=True)
+    last_serial: Mapped[int | None] = mapped_column(BigInteger)
+    due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 engine = create_engine(settings().database_url, pool_pre_ping=True)

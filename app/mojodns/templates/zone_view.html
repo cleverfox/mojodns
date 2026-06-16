@@ -16,6 +16,13 @@
       <span class="chip" title="{% if check %}resolved NS: {{ check.resolved_ns or check.detail or '—' }} · checked {{ check.checked_at.strftime('%d.%m.%Y %H:%M') }}{% else %}not verified yet{% endif %}">
         ns <b><span class="status-dot st-{{ st }}"></span> {{ st }}</b>
       </span>
+      {% set sec = check.dnssec if check else None %}
+      {% if sec and sec != 'unsigned' %}
+      {% set secdot = {'secure':'ok','insecure':'partial','bogus':'down','error':'error'}.get(sec,'unknown') %}
+      <span class="chip" title="{% if sec == 'insecure' %}signed, but no DS at the parent — submit the DS at your registrar{% elif sec == 'bogus' %}validation FAILS at resolvers (broken chain){% elif sec == 'secure' %}full chain of trust — resolvers validate this zone{% endif %}">
+        dnssec <b><span class="status-dot st-{{ secdot }}"></span> {{ sec }}</b>
+      </span>
+      {% endif %}
     </div>
   </div>
 

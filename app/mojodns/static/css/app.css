@@ -151,7 +151,7 @@ table.kv td { padding: 6px 18px 6px 0; }
 .mono { font-family: var(--mono); font-size: 13px; }
 .dim { color: var(--dim); }
 .empty { color: var(--dim); text-align: center; font-family: var(--mono); padding: 22px !important; }
-.rec-data { word-break: break-all; max-width: 420px; }
+.rec-data { word-break: break-all; }
 
 .zone-link { color: var(--text); font-family: var(--mono); text-decoration: none;
   border-bottom: 1px dotted var(--amber-deep); }
@@ -319,6 +319,9 @@ tr.check-panel > td { background: var(--bg-raise); padding: 12px 14px; }
 .check-port { flex-direction: row; align-items: center; gap: 6px; }
 .check-inline { flex-direction: row; align-items: center; gap: 8px; }
 .check-inline input { width: auto; }
+.dnssec-rec { margin-bottom: 12px; padding: 8px 10px; background: var(--bg-raise);
+  border: 1px solid var(--line); }
+.dnssec-rec.is-recommended { border-left: 3px solid var(--ok); }
 .check-port input { width: 80px; }
 .check-result { margin-top: 10px; }
 .check-line { font-size: 13.5px; margin: 6px 0; }

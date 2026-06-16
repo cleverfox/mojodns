@@ -7,6 +7,14 @@ gpgsql-port=5432
 gpgsql-dbname=dns
 gpgsql-user=dns
 gpgsql-password=${POSTGRES_PASSWORD}
+# Enable DNSSEC operations on the gpgsql backend (the schema already has the
+# cryptokeys/domainmetadata tables; this flag turns on the signing code paths so
+# the panel can secure zones). PowerDNS live-signs; NSD secondaries serve the
+# pre-signed zone over AXFR.
+gpgsql-dnssec=yes
+# auto-rectify the NSEC3 chain on every change made through the REST API (this is
+# pdns's default, set explicitly so signed zones stay valid after record edits)
+default-api-rectify=yes
 
 # This box is a primary: send NOTIFY on zone changes.
 # Serials are bumped by the per-zone SOA-EDIT-API=DEFAULT behaviour

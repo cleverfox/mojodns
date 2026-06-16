@@ -43,6 +43,31 @@ def canonical(name: str) -> str:
     return name + "."
 
 
+# DS/CDS digest types (3rd field of the rdata) → (label, advice, recommended)
+_DS_DIGESTS = {
+    "1": ("SHA-1", "deprecated — most registries reject it", False),
+    "2": ("SHA-256", "recommended — submit this one", True),
+    "4": ("SHA-384", "optional, stronger", False),
+}
+
+
+def _ds_entry(rdata: str) -> dict:
+    """Annotate a DS/CDS rdata ('<keytag> <algo> <digesttype> <digest>')."""
+    parts = rdata.split()
+    dtype = parts[2] if len(parts) >= 3 else ""
+    label, advice, recommended = _DS_DIGESTS.get(dtype, (f"digest type {dtype}", "", False))
+    comment = f"{label} digest" + (f" — {advice}" if advice else "")
+    return {"rdata": rdata, "comment": comment, "recommended": recommended}
+
+
+def _dnskey_entry(rdata: str) -> dict:
+    """Annotate a DNSKEY rdata ('<flags> <proto> <algo> <pubkey>')."""
+    flags = rdata.split()[0] if rdata.split() else ""
+    role = {"257": "CSK / key-signing", "256": "zone-signing"}.get(flags, "key")
+    return {"rdata": rdata,
+            "comment": f"DNSKEY ({role}) — registrars want the DS above, not this"}
+
+
 class PdnsClient:
     def __init__(self) -> None:
         s = settings()
@@ -133,6 +158,62 @@ class PdnsClient:
     def set_zone_kind(self, zone: str, kind: str) -> None:
         """Master/Native/etc. Native suppresses pdns's own NOTIFY entirely."""
         self._req("PUT", f"/zones/{canonical(zone)}", json={"kind": kind})
+
+    # -- DNSSEC --------------------------------------------------------------
+    #
+    # PowerDNS live-signs; the NSD secondaries serve the pre-signed zone over the
+    # normal AXFR. A zone is secured with a single CSK (ECDSA P-256) + NSEC3 that
+    # is NON-narrow (so the chain materialises and can transfer) with 0 iterations
+    # and an empty salt (RFC 9276). API-RECTIFY keeps the NSEC3 chain valid on
+    # every later rrset edit. DS/DNSKEY/CDS are public — safe to display anytime.
+
+    def zone_cryptokeys(self, zone: str) -> list[dict]:
+        """All DNSSEC keys for the zone (id/keytype/active/flags/dnskey/ds/cds),
+        or [] when the zone is insecure."""
+        return self._req("GET", f"/zones/{canonical(zone)}/cryptokeys") or []
+
+    def rectify_zone(self, zone: str) -> None:
+        self._req("PUT", f"/zones/{canonical(zone)}/rectify")
+
+    def secure_zone(self, zone: str) -> None:
+        """Enable DNSSEC: add an active CSK if none, switch on non-narrow NSEC3,
+        and rectify once. Ongoing API edits auto-rectify via the global
+        default-api-rectify=yes (API-RECTIFY isn't settable per-zone via the API)."""
+        if not self.zone_cryptokeys(zone):
+            self._req("POST", f"/zones/{canonical(zone)}/cryptokeys",
+                      json={"keytype": "csk", "active": True, "algorithm": "ecdsa256"})
+        self._req("PUT", f"/zones/{canonical(zone)}",
+                  json={"nsec3param": "1 0 0 -", "nsec3narrow": False})
+        self.rectify_zone(zone)
+
+    def unsecure_zone(self, zone: str) -> None:
+        """Disable DNSSEC: clear NSEC3, then remove every key."""
+        keys = self.zone_cryptokeys(zone)
+        if keys:
+            self._req("PUT", f"/zones/{canonical(zone)}", json={"nsec3param": ""})
+            for k in keys:
+                self._req("DELETE", f"/zones/{canonical(zone)}/cryptokeys/{k['id']}")
+
+    def zone_dnssec_info(self, zone: str) -> dict:
+        """UI summary from the active keys. ds/cds/dnskey are annotated entries
+        ({rdata, comment, recommended?}); the recommended DS (SHA-256) sorts first."""
+        keys = self.zone_cryptokeys(zone)
+        ds: list[dict] = []
+        cds: list[dict] = []
+        dnskey: list[dict] = []
+        algorithm = None
+        for k in keys:
+            if not k.get("active"):
+                continue
+            ds += [_ds_entry(d) for d in (k.get("ds") or [])]
+            cds += [_ds_entry(c) for c in (k.get("cds") or [])]
+            if k.get("dnskey"):
+                dnskey.append(_dnskey_entry(k["dnskey"]))
+            algorithm = algorithm or k.get("algorithm")
+        ds.sort(key=lambda e: (not e["recommended"], e["rdata"]))  # recommended first
+        cds.sort(key=lambda e: (not e["recommended"], e["rdata"]))
+        return {"secured": bool(keys), "ds": ds, "cds": cds,
+                "dnskey": dnskey, "algorithm": algorithm}
 
     # -- metadata / TSIG ------------------------------------------------------
 

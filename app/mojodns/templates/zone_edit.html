@@ -1,5 +1,18 @@
 {% extends "base.html" %}
 {% block title %}settings · {{ zone_display }} · mojodns{% endblock %}
+
+{# one DNSSEC record: a comment, the full line, and copy-record / copy-payload #}
+{% macro dnssec_rec(line, payload, comment, recommended=false) %}
+<div class="dnssec-rec{{ ' is-recommended' if recommended }}">
+  <div class="hint">{{ comment }}</div>
+  <div class="rec-data mono" style="user-select:all">{{ line }}</div>
+  <div class="row-actions" style="margin-top:4px">
+    <button type="button" class="btn btn-ghost" data-copy="{{ line }}">copy record</button>
+    <button type="button" class="btn btn-ghost" data-copy="{{ payload }}">copy payload</button>
+  </div>
+</div>
+{% endmacro %}
+
 {% block content %}
 
 <div class="crumbs"><a href="/zones">zones</a> <span>/</span>
@@ -184,6 +197,49 @@ zone {{ zone|bare }}.
 update add host.{{ zone|bare }}. 300 A 198.51.100.10
 send
 EOF</pre>
+  {% endif %}
+</section>
+
+<section class="panel">
+  <div class="panel-head"><h1>DNSSEC</h1>
+    {% if dnssec.secured %}<span class="chip">secured <b>{{ dnssec.algorithm or 'CSK' }}</b></span>{% endif %}
+  </div>
+  {% if not dnssec.secured %}
+  <p class="hint">Sign this zone so resolvers can validate its answers. PowerDNS
+    signs (single CSK, <b>ECDSA&nbsp;P-256</b>, NSEC3); the public nameservers serve
+    the signed zone automatically. After enabling, you'll get a <b>DS record</b> to
+    add at the registrar — the chain of trust isn't active until that DS is published.</p>
+  <form method="post" action="/zones/{{ zone|bare }}/dnssec/enable">
+    <button class="btn btn-primary" type="submit">enable DNSSEC ▸</button>
+  </form>
+  {% else %}
+  <p class="hint">This zone is signed. Add the <b>DS record</b> below at your registrar
+    to activate validation. The DS/DNSKEY are public — copy them whenever you need
+    (e.g. when migrating to another registrar).</p>
+
+  <h2 class="subhead">DS record(s) — submit to the registrar</h2>
+  {% for d in dnssec.ds %}
+  {{ dnssec_rec(zone|bare ~ '. IN DS ' ~ d.rdata, d.rdata, d.comment, d.recommended) }}
+  {% else %}
+  <p class="hint dim">No DS yet — the key may still be generating; reload in a moment.</p>
+  {% endfor %}
+
+  <h2 class="subhead">DNSKEY</h2>
+  {% for k in dnssec.dnskey %}
+  {{ dnssec_rec(zone|bare ~ '. IN DNSKEY ' ~ k.rdata, k.rdata, k.comment) }}
+  {% endfor %}
+
+  {% if dnssec.cds %}
+  <h2 class="subhead">CDS <span class="dim">(for registrars that poll CDS/CDNSKEY)</span></h2>
+  {% for c in dnssec.cds %}
+  {{ dnssec_rec(zone|bare ~ '. IN CDS ' ~ c.rdata, c.rdata, c.comment, c.recommended) }}
+  {% endfor %}
+  {% endif %}
+
+  <form method="post" action="/zones/{{ zone|bare }}/dnssec/disable" style="margin-top:1rem"
+        onsubmit="return confirm('Disable DNSSEC for {{ zone_display }}? Remove the DS at the registrar FIRST, or the zone will fail validation.')">
+    <button class="btn btn-ghost btn-danger" type="submit">disable DNSSEC ✕</button>
+  </form>
   {% endif %}
 </section>
 

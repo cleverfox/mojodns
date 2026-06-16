@@ -626,11 +626,12 @@ def zone_edit(request: Request, zone: str = Depends(zone_guard),
         update_keys.append({"name": name, "algorithm": k.get("algorithm", "?"),
                             "secret": k.get("key", "")})
     update_ips = pdns.get_zone_update_ips(zone)
+    dnssec = pdns.zone_dnssec_info(zone)
     return render(request, "zone_edit.html", user=user, zone=zone,
                   zone_display=to_unicode(zone.rstrip(".")), zdata=zdata, soa=soa,
                   custom=custom, per_zone_keys=per_zone_keys, master_host=s.master_host,
                   notify_targets=notify_targets, update_keys=update_keys,
-                  update_ips=update_ips)
+                  update_ips=update_ips, dnssec=dnssec)
 
 
 @router.post("/zones/{zone}/soa")
@@ -657,6 +658,39 @@ def soa_update(
         notify_zone(zone)
         log_history(db, user.id, "zone", zone, "Update SOA")
         flash(request, "SOA updated")
+    except PdnsError as e:
+        flash(request, str(e), "error")
+    return RedirectResponse(f"/zones/{zone.rstrip('.')}/edit", status_code=303)
+
+
+@router.post("/zones/{zone}/dnssec/enable")
+def zone_dnssec_enable(request: Request, zone: str = Depends(zone_guard),
+                       user: User = Depends(current_user), db: Session = Depends(get_db)):
+    if not is_zone_owner(db, user, zone):
+        flash(request, "Only the zone owner or an admin can change DNSSEC", "error")
+        return RedirectResponse(f"/zones/{zone.rstrip('.')}/edit", status_code=303)
+    try:
+        pdns.secure_zone(zone)
+        notify_zone(zone)  # serial bumped by rectify → secondaries AXFR the signed zone
+        log_history(db, user.id, "zone", zone, "Enable DNSSEC (CSK ECDSA P-256, NSEC3)")
+        flash(request, "DNSSEC enabled — submit the DS record to the registrar to "
+                       "complete the chain of trust")
+    except PdnsError as e:
+        flash(request, str(e), "error")
+    return RedirectResponse(f"/zones/{zone.rstrip('.')}/edit", status_code=303)
+
+
+@router.post("/zones/{zone}/dnssec/disable")
+def zone_dnssec_disable(request: Request, zone: str = Depends(zone_guard),
+                        user: User = Depends(current_user), db: Session = Depends(get_db)):
+    if not is_zone_owner(db, user, zone):
+        flash(request, "Only the zone owner or an admin can change DNSSEC", "error")
+        return RedirectResponse(f"/zones/{zone.rstrip('.')}/edit", status_code=303)
+    try:
+        pdns.unsecure_zone(zone)
+        notify_zone(zone)
+        log_history(db, user.id, "zone", zone, "Disable DNSSEC")
+        flash(request, "DNSSEC disabled — remove the DS record at the registrar too")
     except PdnsError as e:
         flash(request, str(e), "error")
     return RedirectResponse(f"/zones/{zone.rstrip('.')}/edit", status_code=303)

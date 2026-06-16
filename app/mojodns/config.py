@@ -73,6 +73,12 @@ class Settings(BaseSettings):
     # force a password change once it is older than this many days (0 = no
     # age-based expiry; new and admin-reset passwords are always temporary)
     password_max_age_days: int = 365
+    # DNSSEC re-sign scheduler: bump a signed zone's serial this long after its
+    # last change so dumb secondaries re-AXFR fresh RRSIGs; the sweep runs on the
+    # given cadence and bumps are jittered + capped per sweep to spread load
+    dnssec_resign_quiet_hours: float = 24.0
+    dnssec_resign_interval_minutes: int = 30
+    dnssec_resign_jitter_hours: float = 3.0
 
     @property
     def verify_resolver_list(self) -> list[str]:

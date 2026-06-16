@@ -15,6 +15,7 @@ from .config import settings
 from .csrf import CSRFMiddleware
 from .db import Base, Proxy, SessionLocal, User, engine
 from .pdns import canonical, is_custom_zone, pdns
+from . import resign
 from .routers import account, api, auth, checks, ddns, pdns_compat, proxies, users, zones
 from .security import hash_password, hash_token
 from .verify import check_zones, store_results, summarize
@@ -36,6 +37,7 @@ def _migrate() -> None:
             "ALTER TABLE app_users ADD COLUMN IF NOT EXISTS must_change_password boolean NOT NULL DEFAULT false"))
         conn.execute(text("ALTER TABLE app_users ADD COLUMN IF NOT EXISTS last_login timestamptz"))
         conn.execute(text("ALTER TABLE app_users ADD COLUMN IF NOT EXISTS last_pwd_change timestamptz"))
+        conn.execute(text("ALTER TABLE zone_checks ADD COLUMN IF NOT EXISTS dnssec varchar(16)"))
         # existing users: start the password-age clock at upgrade time so we
         # don't force everyone to rotate immediately
         conn.execute(text(
@@ -129,12 +131,26 @@ async def periodic_verify() -> None:
             log.warning("Periodic NS verification failed: %s", e)
 
 
+async def periodic_resign() -> None:
+    minutes = settings().dnssec_resign_interval_minutes
+    if not minutes:
+        return
+    while True:
+        await asyncio.sleep(minutes * 60)
+        try:
+            await anyio.to_thread.run_sync(resign.resign_due_zones)
+        except Exception as e:
+            log.warning("DNSSEC re-sign sweep failed: %s", e)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await anyio.to_thread.run_sync(bootstrap)
-    task = asyncio.create_task(periodic_verify())
+    tasks = [asyncio.create_task(periodic_verify()),
+             asyncio.create_task(periodic_resign())]
     yield
-    task.cancel()
+    for t in tasks:
+        t.cancel()
 
 
 app = FastAPI(title="mojodns", lifespan=lifespan)

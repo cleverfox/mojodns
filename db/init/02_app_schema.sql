@@ -52,6 +52,7 @@ CREATE TABLE zone_checks (
   status      VARCHAR(16) NOT NULL,     -- ok | partial | mismatch | error
   resolved_ns TEXT,
   detail      VARCHAR(255),
+  dnssec      VARCHAR(16),              -- unsigned | secure | insecure | bogus | error
   checked_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -103,3 +104,10 @@ CREATE TABLE proxies (
 );
 INSERT INTO proxies (name, is_direct, enabled, public_available)
   VALUES ('direct', true, true, true);
+
+-- per-zone DNSSEC re-sign scheduler state (keeps dumb secondaries' RRSIGs fresh)
+CREATE TABLE zone_signing (
+  zone        VARCHAR(255) PRIMARY KEY,
+  last_serial BIGINT,
+  due_at      TIMESTAMPTZ
+);
