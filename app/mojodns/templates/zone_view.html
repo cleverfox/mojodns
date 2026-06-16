@@ -68,6 +68,8 @@
     <h1>DNS servers</h1>
     <span id="server-spin" class="htmx-indicator dim" style="margin-left:auto">checking…</span>
   </div>
+  <p class="hint">External report:
+    <a class="zone-link" href="https://intodns.com/{{ zone|bare }}" target="_blank" rel="noopener">intoDNS ↗</a></p>
   <div id="server-results">
     <p class="hint">Compare the parent zone's delegation with the nameservers this zone
       publishes, and poll each one's SOA serial — green = in sync, yellow = stale serial,
@@ -80,6 +82,9 @@
     <h1>DNSSEC check</h1>
     <span id="dnssec-spin" class="htmx-indicator dim" style="margin-left:auto">checking…</span>
   </div>
+  <p class="hint">External validators:
+    <a class="zone-link" href="https://dnssec-analyzer.verisignlabs.com/{{ zone|bare }}" target="_blank" rel="noopener">Verisign DNSSEC Analyzer ↗</a> ·
+    <a class="zone-link" href="https://dnsviz.net/d/{{ zone|bare }}/dnssec/" target="_blank" rel="noopener">DNSViz ↗</a></p>
   <div id="dnssec-report">
     <p class="hint">Validate the chain of trust end-to-end: the parent's DS vs this
       zone's active key, and each published nameserver's RRSIG freshness.</p>
