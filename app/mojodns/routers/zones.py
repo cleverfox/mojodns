@@ -17,6 +17,7 @@ from ..axfr import AxfrError, ZoneParseError, axfr_text, parse_zone_text
 from ..slaves import apex_ns, check_delegation, check_slaves, summarize as slave_summary
 from ..notifier import notify_zone, parse_targets
 from ..templating import flash, render
+from ..dnsseccheck import check_dnssec
 from .. import ratelimit
 from ..verify import check_zone, check_zones, load_checks, store_results, summarize
 
@@ -694,6 +695,22 @@ def zone_dnssec_disable(request: Request, zone: str = Depends(zone_guard),
     except PdnsError as e:
         flash(request, str(e), "error")
     return RedirectResponse(f"/zones/{zone.rstrip('.')}/edit", status_code=303)
+
+
+@router.post("/zones/{zone}/dnssec/check")
+def zone_dnssec_check(request: Request, zone: str = Depends(zone_guard),
+                      user: User = Depends(current_user), db: Session = Depends(get_db)):
+    s = settings()
+    limit = user.check_rate_limit if user.check_rate_limit is not None else s.default_check_rate_limit
+    ok, retry = ratelimit.allow(user.id, limit)
+    if not ok:
+        return render(request, "partials/dnssec_report.html", user=user, zone=zone,
+                      report=None, error=f"Rate limit reached ({limit}/min) — wait {retry}s")
+    report = check_dnssec(zone)
+    note = report.get("verdict", "-") if report.get("secured") else "unsigned"
+    log_history(db, user.id, "zone", zone, f"DNSSEC check: {note}")
+    return render(request, "partials/dnssec_report.html", user=user, zone=zone,
+                  report=report, error=None)
 
 
 @router.post("/zones/{zone}/delete")

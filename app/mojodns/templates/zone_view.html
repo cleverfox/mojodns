@@ -50,6 +50,11 @@
             onclick="document.getElementById('dns-servers-panel').style.display=''"
             title="check the parent delegation and poll each published nameserver's SOA serial">
       check DNS servers ⟲</button>
+    <button class="btn btn-ghost"
+            hx-post="/zones/{{ zone|bare }}/dnssec/check" hx-target="#dnssec-report" hx-indicator="#dnssec-spin"
+            onclick="document.getElementById('dnssec-report-panel').style.display=''"
+            title="validate the chain of trust: parent DS, and each nameserver's RRSIG freshness">
+      check DNSSEC ⟲</button>
     <a class="btn btn-ghost" href="/zones/{{ zone|bare }}/axfr?raw=1"
        title="download as a zone text file">export zone ⤓</a>
     <a class="btn btn-ghost" href="/zones/{{ zone|bare }}/edit">settings</a>
@@ -67,6 +72,17 @@
     <p class="hint">Compare the parent zone's delegation with the nameservers this zone
       publishes, and poll each one's SOA serial — green = in sync, yellow = stale serial,
       red = not answering.</p>
+  </div>
+</section>
+
+<section class="panel" id="dnssec-report-panel" style="display:none">
+  <div class="panel-head">
+    <h1>DNSSEC check</h1>
+    <span id="dnssec-spin" class="htmx-indicator dim" style="margin-left:auto">checking…</span>
+  </div>
+  <div id="dnssec-report">
+    <p class="hint">Validate the chain of trust end-to-end: the parent's DS vs this
+      zone's active key, and each published nameserver's RRSIG freshness.</p>
   </div>
 </section>
 

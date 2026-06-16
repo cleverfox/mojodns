@@ -79,6 +79,9 @@ class Settings(BaseSettings):
     dnssec_resign_quiet_hours: float = 24.0
     dnssec_resign_interval_minutes: int = 30
     dnssec_resign_jitter_hours: float = 3.0
+    # the rich DNSSEC checker warns when a secondary's RRSIG is within this many
+    # days of expiry (daily re-sign vs a multi-week window → a few days = trouble)
+    dnssec_rrsig_warn_days: int = 3
 
     @property
     def verify_resolver_list(self) -> list[str]:

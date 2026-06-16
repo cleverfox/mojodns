@@ -1,0 +1,57 @@
+{% if error %}
+<div class="flash flash-error">{{ error }}</div>
+{% elif not report.secured %}
+  {% if report.dangling_ds %}
+  {% for w in report.warnings %}<div class="flash flash-error">{{ w }}</div>{% endfor %}
+  <div class="subhead">stray DS at parent — remove these at the registrar</div>
+  {% for d in report.parent.ds %}
+  <div class="rec-data mono">{{ d[0] }} {{ d[1] }} {{ d[2] }} {{ d[3][:32] }}…</div>
+  {% endfor %}
+  {% else %}
+  <div class="flash flash-ok">This zone is not signed and the parent publishes no DS —
+    DNSSEC is fully off and consistent. Enable DNSSEC in settings to sign it.</div>
+  {% endif %}
+{% else %}
+
+{% set vmap = {'secure':'flash-ok','insecure':'flash-warn','bogus':'flash-error','error':'flash-warn'} %}
+<div class="flash {{ vmap.get(report.verdict, 'flash-warn') }}">
+  Validation: <b>{{ report.verdict }}</b>
+  {% if report.verdict == 'secure' %}— resolvers validate this zone.
+  {% elif report.verdict == 'insecure' %}— signed, but resolvers can't authenticate it (DS missing at the parent).
+  {% elif report.verdict == 'bogus' %}— resolvers FAIL validation (broken chain).
+  {% else %}— couldn't determine (resolver unreachable).{% endif %}
+</div>
+
+{% for w in report.warnings %}<div class="flash flash-warn">{{ w }}</div>{% endfor %}
+
+<div class="subhead">parent DS</div>
+{% set pmap = {'ok':'st-ok','absent':'st-partial','mismatch':'st-down'} %}
+<p class="mono">
+  <span class="status-dot {{ pmap.get(report.parent.state, 'st-unknown') }}"></span>
+  {% if report.parent.state == 'ok' %}DS at parent matches an active key
+  {% elif report.parent.state == 'absent' %}no DS at parent — chain not established
+  {% elif report.parent.state == 'mismatch' %}DS present but matches no active key
+  {% else %}{{ report.parent.error or 'could not query parent' }}{% endif %}
+</p>
+{% for d in report.parent.ds %}
+<div class="rec-data mono dim">{{ d[0] }} {{ d[1] }} {{ d[2] }} {{ d[3][:32] }}…{% if d in report.parent.matched %} <span class="st-ok">✓ active</span>{% elif d in report.parent.extra %} <span class="st-down">⚠ stale</span>{% endif %}</div>
+{% endfor %}
+
+<div class="subhead" style="margin-top:14px">nameserver signatures{% if report.soonest_days is not none %} · soonest RRSIG expiry in {{ report.soonest_days }}d{% endif %}</div>
+<table class="data">
+  <thead><tr><th>nameserver</th><th>address</th><th>RRSIG expires</th><th>status</th></tr></thead>
+  <tbody>
+    {% set smap = {'ok':'st-ok','expiring':'st-partial','unsigned':'st-down','down':'st-error'} %}
+    {% for r in report.nameservers %}
+    <tr>
+      <td class="mono">{{ r.ns|bare }}</td>
+      <td class="mono dim">{{ r.addr or '—' }}</td>
+      <td class="mono">{% if r.expires_at %}{{ r.expires_at.strftime('%Y-%m-%d') }} ({{ r.days_left }}d){% else %}—{% endif %}</td>
+      <td><span class="status-dot {{ smap.get(r.status, 'st-unknown') }}"></span> {{ r.status }}{% if r.detail %} <span class="dim">({{ r.detail }})</span>{% endif %}</td>
+    </tr>
+    {% else %}
+    <tr><td colspan="4" class="empty">zone has no NS records</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endif %}
